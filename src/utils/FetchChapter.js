@@ -1,5 +1,5 @@
 const fetchChapter = (chapterId) => {
-  return fetch(`${process.env.PUBLIC_URL}/game/${chapterId}.json`, {
+  return fetch(`${import.meta.env.BASE_URL}game/${chapterId}.json`, {
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",

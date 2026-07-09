@@ -1,9 +1,21 @@
 const visibilityFields = [
-  "hideIfAnyFlagMatches",
-  "hideIfAllFlagsMatches",
-  "showIfAnyFlagMatches",
-  "showIfAllFlagsMatches",
+  "hideAny",
+  "hideAll",
+  "showAny",
+  "showAll",
 ];
+
+const historyLimit = 10;
+const graphMinZoom = 0.35;
+const graphMaxZoom = 2;
+const graphPanPadding = 300;
+const graphLayoutPadding = 90;
+const graphDirectedNodeSep = 90;
+const graphDirectedRankSep = 190;
+const graphDirectedEdgeSep = 50;
+const graphOrganicNodeRepulsion = 14000;
+const graphOrganicIdealEdgeLength = 230;
+const graphOrganicNodeOverlap = 30;
 
 const state = {
   chapterId: "",
@@ -12,8 +24,17 @@ const state = {
   selectedSceneId: "",
   dirty: false,
   graph: null,
+  graphDagreRegistered: false,
+  graphLayoutMode: "auto",
+  isClampingGraphPan: false,
+  savedSnapshot: "",
+  undoStack: [],
+  redoStack: [],
+  previewFlags: [],
+  pendingPreviewMovement: null,
   editorView: {
     singleLine: false,
+    singleLineFullText: false,
     collapsedGroups: {},
     expandedRows: {},
   },
@@ -21,9 +42,14 @@ const state = {
 
 const chapterSelect = document.getElementById("chapterSelect");
 const addSceneButton = document.getElementById("addSceneButton");
+const graphLayoutSelect = document.getElementById("graphLayoutSelect");
+const fitGraphButton = document.getElementById("fitGraphButton");
+const undoButton = document.getElementById("undoButton");
+const redoButton = document.getElementById("redoButton");
 const saveButton = document.getElementById("saveButton");
 const statusEl = document.getElementById("status");
 const editorEl = document.getElementById("editor");
+const previewEl = document.getElementById("preview");
 const sceneIdsEl = document.getElementById("sceneIds");
 
 const setStatus = (message, className = "") => {
@@ -31,9 +57,37 @@ const setStatus = (message, className = "") => {
   statusEl.className = `status ${className}`.trim();
 };
 
+const chapterSnapshot = () => (state.chapter ? JSON.stringify(state.chapter) : "");
+
+const updateHistoryButtons = () => {
+  undoButton.disabled = state.undoStack.length === 0;
+  redoButton.disabled = state.redoStack.length === 0;
+};
+
+const updateDirtyStatus = () => {
+  const dirty = Boolean(state.chapter) && chapterSnapshot() !== state.savedSnapshot;
+  state.dirty = dirty;
+  setStatus(dirty ? "Unsaved changes" : "Saved", dirty ? "dirty" : "saved");
+  updateHistoryButtons();
+};
+
 const markDirty = () => {
-  state.dirty = true;
-  setStatus("Unsaved changes", "dirty");
+  state.pendingPreviewMovement = null;
+  updateDirtyStatus();
+  renderPreview();
+};
+
+const pushHistorySnapshot = (snapshot) => {
+  if (!snapshot) return;
+  if (state.undoStack[state.undoStack.length - 1] === snapshot) return;
+  state.undoStack.push(snapshot);
+  if (state.undoStack.length > historyLimit) state.undoStack.shift();
+};
+
+const recordHistory = () => {
+  pushHistorySnapshot(chapterSnapshot());
+  state.redoStack = [];
+  updateHistoryButtons();
 };
 
 const api = async (url, options) => {
@@ -83,6 +137,12 @@ const movementTriggers = (scene) =>
       .filter(({ trigger }) => trigger.type === "movement" && trigger.target)
   );
 
+const graphTextPreview = (value, maxLength = 48) => {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 3)}...`;
+};
+
 const graphElements = () => {
   const nodes = state.chapter.scenes.map((scene) => ({
     data: {
@@ -117,7 +177,9 @@ const graphElements = () => {
           id: `edge:${scene.id}:${actionIndex}:${triggerIndex}`,
           source: scene.id,
           target: targetId,
-          label: isCrossChapter ? `${action.text} (${trigger.chapterId})` : action.text,
+          label: graphTextPreview(
+            isCrossChapter ? `${action.text} (${trigger.chapterId})` : action.text
+          ),
           crossChapter: isCrossChapter ? "yes" : "no",
         },
       };
@@ -141,14 +203,102 @@ const restoreNodePositions = (positions) => {
   });
 };
 
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+const clampGraphPan = () => {
+  if (!state.graph || state.isClampingGraphPan || state.graph.nodes().length === 0) return;
+  const container = state.graph.container();
+  if (!container) return;
+
+  const bounds = state.graph.nodes().boundingBox();
+  const zoom = state.graph.zoom();
+  const pan = state.graph.pan();
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+
+  const minX = width - bounds.x2 * zoom - graphPanPadding;
+  const maxX = -bounds.x1 * zoom + graphPanPadding;
+  const minY = height - bounds.y2 * zoom - graphPanPadding;
+  const maxY = -bounds.y1 * zoom + graphPanPadding;
+  const nextPan = {
+    x: clamp(pan.x, Math.min(minX, maxX), Math.max(minX, maxX)),
+    y: clamp(pan.y, Math.min(minY, maxY), Math.max(minY, maxY)),
+  };
+
+  if (nextPan.x === pan.x && nextPan.y === pan.y) return;
+  state.isClampingGraphPan = true;
+  state.graph.pan(nextPan);
+  state.isClampingGraphPan = false;
+};
+
+const fitGraph = () => {
+  if (!state.graph) return;
+  state.graph.fit(undefined, 60);
+  clampGraphPan();
+};
+
+const graphComplexity = () => {
+  const nodeCount = state.chapter?.scenes?.length || 0;
+  const edgeCount = state.chapter?.scenes?.flatMap(movementTriggers).length || 0;
+  return { nodeCount, edgeCount, density: nodeCount === 0 ? 0 : edgeCount / nodeCount };
+};
+
+const resolvedGraphLayoutMode = () => {
+  if (state.graphLayoutMode !== "auto") return state.graphLayoutMode;
+  const { nodeCount, density } = graphComplexity();
+  return nodeCount > 0 && density > 1.25 ? "organic" : "directed";
+};
+
+const ensureGraphLayoutExtensions = () => {
+  if (state.graphDagreRegistered || typeof cytoscapeDagre === "undefined") return;
+  cytoscape.use(cytoscapeDagre);
+  state.graphDagreRegistered = true;
+};
+
+const graphLayoutOptions = () => ({
+  directed: {
+    name: "dagre",
+    animate: false,
+    directed: true,
+    edgeSep: graphDirectedEdgeSep,
+    fit: false,
+    nodeSep: graphDirectedNodeSep,
+    padding: graphLayoutPadding,
+    rankDir: "LR",
+    rankSep: graphDirectedRankSep,
+    spacingFactor: 1.35,
+  },
+  organic: {
+    name: "cose",
+    animate: false,
+    componentSpacing: 130,
+    edgeElasticity: 80,
+    idealEdgeLength: graphOrganicIdealEdgeLength,
+    nodeOverlap: graphOrganicNodeOverlap,
+    nodeRepulsion: graphOrganicNodeRepulsion,
+    padding: graphLayoutPadding,
+  },
+  grid: {
+    name: "grid",
+    animate: false,
+    avoidOverlap: true,
+    avoidOverlapPadding: 45,
+    padding: graphLayoutPadding,
+  },
+}[resolvedGraphLayoutMode()]);
+
 const renderGraph = ({ relayout = false } = {}) => {
   if (!state.chapter) return;
 
+  ensureGraphLayoutExtensions();
   const elements = graphElements();
   if (!state.graph) {
     state.graph = cytoscape({
       container: document.getElementById("graph"),
       elements,
+      minZoom: graphMinZoom,
+      maxZoom: graphMaxZoom,
+      wheelSensitivity: 0.15,
       style: [
         {
           selector: "node",
@@ -193,10 +343,12 @@ const renderGraph = ({ relayout = false } = {}) => {
             "target-arrow-color": "#7b8798",
             color: "#c4ccd7",
             label: "data(label)",
-            "font-size": 9,
+            "font-size": 10,
             "text-background-color": "#141820",
             "text-background-opacity": 0.85,
-            "text-background-padding": 3,
+            "text-background-padding": 5,
+            "text-max-width": 120,
+            "text-wrap": "wrap",
             width: 2,
           },
         },
@@ -209,25 +361,62 @@ const renderGraph = ({ relayout = false } = {}) => {
           },
         },
       ],
-      layout: { name: "cose", animate: false },
+      layout: graphLayoutOptions(),
     });
 
     state.graph.on("tap", "node", (event) => {
+      state.pendingPreviewMovement = null;
       state.selectedSceneId = event.target.id();
       renderEditor();
     });
+    state.graph.on("pan zoom", clampGraphPan);
   } else {
     const positions = nodePositions();
     state.graph.elements().remove();
     state.graph.add(elements);
     restoreNodePositions(positions);
-    if (relayout) state.graph.layout({ name: "cose", animate: false }).run();
+    if (relayout) state.graph.layout(graphLayoutOptions()).run();
   }
+
+  clampGraphPan();
 
   if (state.selectedSceneId) {
     const selected = state.graph.getElementById(state.selectedSceneId);
     if (selected.length) selected.select();
   }
+};
+
+const sceneSignature = () =>
+  state.chapter?.scenes?.map((scene) => scene.id).join("|") || "";
+
+const ensureSelectedScene = () => {
+  if (sceneById(state.selectedSceneId)) return;
+  state.selectedSceneId = state.chapter?.scenes?.[0]?.id || "";
+};
+
+const restoreChapterSnapshot = (snapshot, redoTarget) => {
+  if (!snapshot) return;
+  const previousSceneSignature = sceneSignature();
+  redoTarget.push(chapterSnapshot());
+  if (redoTarget.length > historyLimit) redoTarget.shift();
+  state.chapter = JSON.parse(snapshot);
+  state.pendingPreviewMovement = null;
+  ensureSelectedScene();
+  clearExpandedRows();
+  renderEditor();
+  renderGraph({ relayout: previousSceneSignature !== sceneSignature() });
+  updateDirtyStatus();
+  updateHistoryButtons();
+};
+
+const undo = () => {
+  const snapshot = state.undoStack.pop();
+  restoreChapterSnapshot(snapshot, state.redoStack);
+};
+
+const redo = () => {
+  const snapshot = state.redoStack.pop();
+  restoreChapterSnapshot(snapshot, state.undoStack);
 };
 
 const groupKey = (scene, name) => `${scene.id}:group:${name}`;
@@ -268,10 +457,305 @@ const previewText = (value, fallback = "Untitled") => {
   return text.length > 90 ? `${text.slice(0, 87)}...` : text;
 };
 
+const compactText = (value, fallback = "Untitled") => {
+  const text = String(value || "").trim();
+  if (!text) return fallback;
+  return state.editorView.singleLineFullText ? text : previewText(text, fallback);
+};
+
 const visibilitySummary = (obj) =>
   visibilityFields
     .filter((visibilityField) => Array.isArray(obj?.[visibilityField]) && obj[visibilityField].length > 0)
     .map((visibilityField) => `${visibilityField}: ${obj[visibilityField].join(", ")}`);
+
+const hideAny = (flags, obj) =>
+  flags.some((flag) => obj.hideAny.includes(flag));
+
+const hideAll = (flags, obj) =>
+  obj.hideAll.every((flag) => flags.includes(flag));
+
+const showAny = (flags, obj) =>
+  flags.some((flag) => obj.showAny.includes(flag));
+
+const showAll = (flags, obj) =>
+  obj.showAll.every((flag) => flags.includes(flag));
+
+const previewIsVisible = (flags, obj) => {
+  if (typeof obj === "string") return true;
+  if (obj.hideAny !== undefined && hideAny(flags, obj)) return false;
+  if (obj.hideAll !== undefined && hideAll(flags, obj)) return false;
+  if (obj.showAny !== undefined) return showAny(flags, obj);
+  if (obj.showAll !== undefined) return showAll(flags, obj);
+  return true;
+};
+
+const previewHasShowFlags = (obj) =>
+  obj && typeof obj === "object" && (obj.showAny !== undefined || obj.showAll !== undefined);
+
+const activeShowFlagIndex = (flags, obj) => {
+  if (obj.showAny !== undefined) {
+    const index = flags.findIndex((flag) => obj.showAny.includes(flag));
+    return index === -1 ? flags.length : index;
+  }
+  if (obj.showAll !== undefined) {
+    const lastFlag = [...flags].reverse().find((flag) => obj.showAll.includes(flag));
+    const index = flags.findIndex((flag) => flag === lastFlag);
+    return index === -1 ? flags.length : index;
+  }
+  return flags.length;
+};
+
+const sortPreviewParagraphs = (flags, a, b) => {
+  if (
+    typeof a === "object" &&
+    typeof b === "object" &&
+    !a.ignoreSortByFlag &&
+    !b.ignoreSortByFlag &&
+    previewHasShowFlags(a) &&
+    previewHasShowFlags(b)
+  ) {
+    return activeShowFlagIndex(flags, a) - activeShowFlagIndex(flags, b);
+  }
+  return 0;
+};
+
+const addVisibilityFlags = (flagSet, obj) => {
+  visibilityFields.forEach((fieldName) => {
+    if (Array.isArray(obj?.[fieldName])) {
+      obj[fieldName].forEach((flag) => flagSet.add(flag));
+    }
+  });
+};
+
+const collectSceneFlags = (scene) => {
+  const flags = new Set();
+  scene?.paragraphs?.forEach((paragraph) => {
+    if (typeof paragraph === "object" && paragraph !== null) addVisibilityFlags(flags, paragraph);
+  });
+  scene?.actions?.forEach((action) => {
+    addVisibilityFlags(flags, action);
+    (action.triggers || []).forEach((trigger) => {
+      if (["add_flag", "remove_flag"].includes(trigger.type) && trigger.target) {
+        flags.add(trigger.target);
+      }
+    });
+  });
+  return [...flags].sort((a, b) => a.localeCompare(b));
+};
+
+const syncPreviewFlags = (scene) => {
+  const availableFlags = collectSceneFlags(scene);
+  return [...new Set([...availableFlags, ...state.previewFlags])].sort((a, b) =>
+    a.localeCompare(b)
+  );
+};
+
+const togglePreviewFlag = (flag) => {
+  state.pendingPreviewMovement = null;
+  if (state.previewFlags.includes(flag)) {
+    state.previewFlags = state.previewFlags.filter((item) => item !== flag);
+  } else {
+    state.previewFlags = [...state.previewFlags, flag];
+  }
+  renderPreview();
+};
+
+const movementTriggersForAction = (action) =>
+  (action.triggers || []).filter((trigger) => trigger.type === "movement" && trigger.target);
+
+const samePendingMovement = (actionIndex, movement) =>
+  state.pendingPreviewMovement?.actionIndex === actionIndex &&
+  state.pendingPreviewMovement?.target === movement.target &&
+  state.pendingPreviewMovement?.chapterId === movement.chapterId;
+
+const previewMovementNotice = (movement) => {
+  if (!movement) return "";
+  if (movement.chapterId && movement.chapterId !== state.chapterId) {
+    return state.dirty
+      ? `Save before opening chapter "${movement.chapterId}".`
+      : `Opens chapter "${movement.chapterId}". Click again.`;
+  }
+  return `Opens scene "${movement.target}". Click again.`;
+};
+
+const openPreviewMovement = async (movement) => {
+  if (movement.chapterId && movement.chapterId !== state.chapterId) {
+    if (state.dirty) return;
+    await loadChapter(movement.chapterId, movement.target);
+    chapterSelect.value = movement.chapterId;
+    return;
+  }
+  if (!sceneById(movement.target)) return;
+  state.selectedSceneId = movement.target;
+  state.pendingPreviewMovement = null;
+  clearExpandedRows();
+  renderEditor();
+  renderGraph();
+};
+
+const applyPreviewFlagTriggers = (action) => {
+  action.triggers?.forEach((trigger) => {
+    if (trigger.type === "add_flag" && trigger.target) {
+      if (!state.previewFlags.includes(trigger.target)) {
+        state.previewFlags = [...state.previewFlags, trigger.target];
+      }
+    } else if (trigger.type === "remove_flag" && trigger.target) {
+      state.previewFlags = state.previewFlags.filter((flag) => flag !== trigger.target);
+    } else if (trigger.type === "remove_all_flags") {
+      state.previewFlags = [];
+    }
+  });
+};
+
+const applyPreviewAction = async (action, actionIndex) => {
+  const movements = movementTriggersForAction(action);
+  const movement = movements[0];
+
+  if (!movement) {
+    applyPreviewFlagTriggers(action);
+    state.pendingPreviewMovement = null;
+    renderPreview();
+    return;
+  }
+
+  if (movement.chapterId && movement.chapterId !== state.chapterId) {
+    if (samePendingMovement(actionIndex, movement) && !state.dirty) {
+      applyPreviewFlagTriggers(action);
+      await openPreviewMovement(movement);
+      return;
+    }
+    state.pendingPreviewMovement = { actionIndex, target: movement.target, chapterId: movement.chapterId };
+    renderPreview();
+    return;
+  }
+
+  if (samePendingMovement(actionIndex, movement)) {
+    applyPreviewFlagTriggers(action);
+    await openPreviewMovement(movement);
+    return;
+  }
+
+  state.pendingPreviewMovement = { actionIndex, target: movement.target, chapterId: movement.chapterId };
+  renderPreview();
+};
+
+const movementSummaries = (action) =>
+  movementTriggersForAction(action)
+    .map((trigger) =>
+      trigger.chapterId
+        ? `moves to chapter "${trigger.chapterId}", scene "${trigger.target}"`
+        : `moves to scene "${trigger.target}"`
+    );
+
+const renderPreview = () => {
+  previewEl.innerHTML = "";
+  const scene = sceneById(state.selectedSceneId);
+  if (!scene) {
+    previewEl.innerHTML = '<div class="empty-state">Select a scene node to preview it.</div>';
+    return;
+  }
+
+  const availableFlags = syncPreviewFlags(scene);
+  const header = document.createElement("div");
+  header.className = "section-header";
+  const title = document.createElement("h2");
+  title.textContent = "Preview";
+  header.append(
+    title,
+    button("Clear flags", () => {
+      state.previewFlags = [];
+      renderPreview();
+    }, "small"),
+    button("All flags", () => {
+      state.previewFlags = [...availableFlags];
+      renderPreview();
+    }, "small")
+  );
+  previewEl.appendChild(header);
+
+  const flagsSection = document.createElement("div");
+  flagsSection.className = "preview-flags";
+  if (availableFlags.length === 0) {
+    const emptyFlags = document.createElement("div");
+    emptyFlags.className = "preview-muted";
+    emptyFlags.textContent = "No scene flags found.";
+    flagsSection.appendChild(emptyFlags);
+  } else {
+    availableFlags.forEach((flag) => {
+      const flagButton = button(flag, () => togglePreviewFlag(flag), "flag-chip");
+      if (state.previewFlags.includes(flag)) flagButton.classList.add("active");
+      flagsSection.appendChild(flagButton);
+    });
+  }
+  previewEl.appendChild(flagsSection);
+
+  if (state.pendingPreviewMovement) {
+    const notice = document.createElement("div");
+    notice.className = "preview-notice";
+    notice.textContent = previewMovementNotice(state.pendingPreviewMovement);
+    previewEl.appendChild(notice);
+  }
+
+  const terminal = document.createElement("div");
+  terminal.className = "preview-terminal";
+  const sceneTitle = document.createElement("h3");
+  sceneTitle.textContent = scene.name || "Untitled";
+  terminal.appendChild(sceneTitle);
+  terminal.appendChild(document.createElement("hr"));
+
+  const paragraphs = document.createElement("div");
+  paragraphs.className = "preview-paragraphs";
+  [...(scene.paragraphs || [])]
+    .filter((paragraph) => previewIsVisible(state.previewFlags, paragraph))
+    .sort((a, b) => sortPreviewParagraphs(state.previewFlags, a, b))
+    .map((paragraph) => (typeof paragraph === "string" ? paragraph : paragraph.text))
+    .forEach((paragraph) => {
+      if (paragraph === "---") {
+        paragraphs.appendChild(document.createElement("hr"));
+        return;
+      }
+      const paragraphEl = document.createElement("div");
+      paragraphEl.className = "preview-paragraph";
+      paragraphEl.textContent = paragraph;
+      paragraphs.appendChild(paragraphEl);
+    });
+  terminal.appendChild(paragraphs);
+  terminal.appendChild(document.createElement("hr"));
+
+  if ((scene.actions || []).length > 0) {
+    const actionTitle = document.createElement("div");
+    actionTitle.className = "preview-actions-title";
+    actionTitle.textContent = "Actions:";
+    terminal.appendChild(actionTitle);
+    const actions = document.createElement("div");
+    actions.className = "preview-actions";
+    scene.actions
+      .filter((action) => previewIsVisible(state.previewFlags, action))
+      .forEach((action, actionIndex) => {
+        const movementTriggers = movementTriggersForAction(action);
+        const movements = movementSummaries(action);
+        const actionEl = button("", () => applyPreviewAction(action, actionIndex), "preview-action");
+        if (movements.length > 0) actionEl.classList.add("has-movement");
+        if (movementTriggers.some((movement) => samePendingMovement(actionIndex, movement))) {
+          actionEl.classList.add("pending-movement");
+        }
+
+        const text = document.createElement("span");
+        text.textContent = `> ${action.text}`;
+        actionEl.appendChild(text);
+
+        if (movements.length > 0) {
+          const movement = document.createElement("span");
+          movement.className = "preview-movement";
+          movement.textContent = ` (${movements.join("; ")})`;
+          actionEl.appendChild(movement);
+        }
+        actions.appendChild(actionEl);
+      });
+    terminal.appendChild(actions);
+  }
+  previewEl.appendChild(terminal);
+};
 
 const triggerSummary = (trigger) => {
   if (trigger.type === "remove_all_flags") return "remove_all_flags";
@@ -282,10 +766,28 @@ const triggerSummary = (trigger) => {
   return `${trigger.type || "movement"} -> ${target}`;
 };
 
+const shortTriggerSummary = (trigger) => {
+  const target = trigger.target || "missing target";
+  if (trigger.type === "add_flag") return `add: ${target}`;
+  if (trigger.type === "remove_flag") return `remove: ${target}`;
+  if (trigger.type === "remove_all_flags") return "remove all";
+  if (trigger.type === "movement" && trigger.chapterId) {
+    return `move: chapter ${trigger.chapterId} scene ${target}`;
+  }
+  return `move: scene ${target}`;
+};
+
+const actionTriggerSummaries = (action) => {
+  const triggers = action.triggers || [];
+  return triggers.length > 0 ? triggers.map(shortTriggerSummary) : ["no triggers"];
+};
+
 const compactRow = (title, details, onClick) => {
   const row = document.createElement("button");
   row.type = "button";
-  row.className = "compact-row";
+  row.className = state.editorView.singleLineFullText
+    ? "compact-row full-text"
+    : "compact-row";
   row.addEventListener("click", onClick);
 
   const titleEl = document.createElement("span");
@@ -333,10 +835,28 @@ const field = (labelText, value, onInput, options = {}) => {
   const wrapper = document.createElement("div");
   const label = document.createElement("label");
   const input = document.createElement(options.multiline ? "textarea" : "input");
+  let editSnapshot = "";
+  let hasRecordedEdit = false;
   label.textContent = labelText;
   input.value = value || "";
   if (options.list) input.setAttribute("list", options.list);
-  input.addEventListener("input", () => onInput(input.value));
+  input.addEventListener("focus", () => {
+    editSnapshot = chapterSnapshot();
+    hasRecordedEdit = false;
+  });
+  input.addEventListener("input", () => {
+    if (options.history !== false && !hasRecordedEdit) {
+      pushHistorySnapshot(editSnapshot || chapterSnapshot());
+      state.redoStack = [];
+      hasRecordedEdit = true;
+      updateHistoryButtons();
+    }
+    onInput(input.value);
+  });
+  input.addEventListener("blur", () => {
+    editSnapshot = "";
+    hasRecordedEdit = false;
+  });
   wrapper.append(label, input);
   return wrapper;
 };
@@ -370,6 +890,7 @@ const renderVisibilityFields = (container, obj) => {
 const moveArrayItem = (array, index, direction) => {
   const nextIndex = index + direction;
   if (nextIndex < 0 || nextIndex >= array.length) return;
+  recordHistory();
   const item = array[index];
   array.splice(index, 1);
   array.splice(nextIndex, 0, item);
@@ -383,7 +904,7 @@ const renderParagraph = (scene, paragraph, index) => {
   const paragraphObject = isObject ? paragraph : { text: paragraph };
   if (state.editorView.singleLine && !isRowExpanded(scene, "paragraph", index)) {
     return compactRow(
-      `${index + 1}. ${previewText(paragraphObject.text, "Empty paragraph")}`,
+      `${index + 1}. ${compactText(paragraphObject.text, "Empty paragraph")}`,
       [isObject ? "object" : "string", ...visibilitySummary(paragraphObject)],
       () => setRowExpanded(scene, "paragraph", index, undefined, true)
     );
@@ -396,6 +917,7 @@ const renderParagraph = (scene, paragraph, index) => {
   typeSelect.innerHTML = '<option value="string">String</option><option value="object">Object</option>';
   typeSelect.value = isObject ? "object" : "string";
   typeSelect.addEventListener("change", () => {
+    recordHistory();
     scene.paragraphs[index] =
       typeSelect.value === "object" ? { text: paragraphObject.text || "" } : paragraphObject.text || "";
     markDirty();
@@ -424,6 +946,7 @@ const renderParagraph = (scene, paragraph, index) => {
     checkbox.type = "checkbox";
     checkbox.checked = Boolean(paragraph.ignoreSortByFlag);
     checkbox.addEventListener("change", () => {
+      recordHistory();
       if (checkbox.checked) paragraph.ignoreSortByFlag = true;
       else delete paragraph.ignoreSortByFlag;
       markDirty();
@@ -441,6 +964,7 @@ const renderParagraph = (scene, paragraph, index) => {
     button("Up", () => moveArrayItem(scene.paragraphs, index, -1)),
     button("Down", () => moveArrayItem(scene.paragraphs, index, 1)),
     button("Remove", () => {
+      recordHistory();
       scene.paragraphs.splice(index, 1);
       markDirty();
       renderEditor();
@@ -468,6 +992,7 @@ const renderTrigger = (scene, action, actionIndex, trigger, index) => {
     .join("");
   typeSelect.value = trigger.type || "movement";
   typeSelect.addEventListener("change", () => {
+    recordHistory();
     trigger.type = typeSelect.value;
     if (trigger.type === "remove_all_flags") {
       delete trigger.target;
@@ -514,6 +1039,7 @@ const renderTrigger = (scene, action, actionIndex, trigger, index) => {
     button("Up", () => moveArrayItem(action.triggers, index, -1)),
     button("Down", () => moveArrayItem(action.triggers, index, 1)),
     button("Remove", () => {
+      recordHistory();
       action.triggers.splice(index, 1);
       markDirty();
       renderEditor();
@@ -527,8 +1053,8 @@ const renderTrigger = (scene, action, actionIndex, trigger, index) => {
 const renderAction = (scene, action, index) => {
   if (state.editorView.singleLine && !isRowExpanded(scene, "action", index)) {
     return compactRow(
-      `${index + 1}. ${previewText(action.text, "Empty action")}`,
-      [`${(action.triggers || []).length} triggers`, ...visibilitySummary(action)],
+      `${index + 1}. ${compactText(action.text, "Empty action")}`,
+      [...actionTriggerSummaries(action), ...visibilitySummary(action)],
       () => setRowExpanded(scene, "action", index, undefined, true)
     );
   }
@@ -552,6 +1078,7 @@ const renderAction = (scene, action, index) => {
     triggerTitle,
     groupToggle(scene, `action:${index}:triggers`, "Triggers"),
     button("Add Trigger", () => {
+      recordHistory();
       action.triggers = action.triggers || [];
       action.triggers.push({ type: "movement", target: "" });
       expandNewRow(scene, "trigger", index, action.triggers.length - 1);
@@ -582,6 +1109,7 @@ const renderAction = (scene, action, index) => {
     button("Up", () => moveArrayItem(scene.actions, index, -1)),
     button("Down", () => moveArrayItem(scene.actions, index, 1)),
     button("Remove", () => {
+      recordHistory();
       scene.actions.splice(index, 1);
       markDirty();
       renderEditor();
@@ -598,6 +1126,7 @@ const renderEditor = () => {
   const scene = sceneById(state.selectedSceneId);
   if (!scene) {
     editorEl.innerHTML = '<div class="empty-state">Select a scene node to edit it.</div>';
+    renderPreview();
     return;
   }
 
@@ -611,11 +1140,22 @@ const renderEditor = () => {
       state.editorView.singleLine = !state.editorView.singleLine;
       clearExpandedRows();
       renderEditor();
-    }, state.editorView.singleLine ? "small active" : "small"),
+    }, state.editorView.singleLine ? "small active" : "small")
+  );
+  if (state.editorView.singleLine) {
+    title.appendChild(
+      button(state.editorView.singleLineFullText ? "Short text" : "Wrap full text", () => {
+        state.editorView.singleLineFullText = !state.editorView.singleLineFullText;
+        renderEditor();
+      }, state.editorView.singleLineFullText ? "small active" : "small")
+    );
+  }
+  title.append(
     button("Collapse all", () => collapseSceneGroups(scene), "small"),
     button("Expand all", () => expandSceneGroups(scene), "small"),
     button("Delete Scene", () => {
       if (!confirm(`Delete scene ${scene.id}?`)) return;
+      recordHistory();
       state.chapter.scenes = state.chapter.scenes.filter((item) => item !== scene);
       state.selectedSceneId = state.chapter.scenes[0]?.id || "";
       markDirty();
@@ -667,6 +1207,7 @@ const renderEditor = () => {
     paragraphsTitle,
     groupToggle(scene, "paragraphs", "Paragraphs"),
     button("Add Paragraph", () => {
+      recordHistory();
       scene.paragraphs.push("");
       expandNewRow(scene, "paragraph", scene.paragraphs.length - 1);
       markDirty();
@@ -696,6 +1237,7 @@ const renderEditor = () => {
     actionsTitle,
     groupToggle(scene, "actions", "Actions"),
     button("Add Action", () => {
+      recordHistory();
       scene.actions.push({ text: "", triggers: [] });
       expandNewRow(scene, "action", scene.actions.length - 1);
       markDirty();
@@ -715,9 +1257,10 @@ const renderEditor = () => {
     });
   }
   editorEl.appendChild(actions);
+  renderPreview();
 };
 
-const loadChapter = async (chapterId) => {
+const loadChapter = async (chapterId, selectedSceneId) => {
   state.chapterId = chapterId;
   state.chapter = null;
   state.selectedSceneId = "";
@@ -725,10 +1268,19 @@ const loadChapter = async (chapterId) => {
   setStatus("Loading chapter...");
   const chapter = await api(`/api/chapters/${chapterId}`);
   state.chapter = chapter;
-  state.selectedSceneId = chapter.scenes?.[0]?.id || "";
+  state.selectedSceneId = chapter.scenes?.some((scene) => scene.id === selectedSceneId)
+    ? selectedSceneId
+    : chapter.scenes?.[0]?.id || "";
+  state.pendingPreviewMovement = null;
+  state.savedSnapshot = chapterSnapshot();
+  state.undoStack = [];
+  state.redoStack = [];
   state.editorView.collapsedGroups = {};
   clearExpandedRows();
-  setStatus("Loaded", "saved");
+  updateDirtyStatus();
+  if (selectedSceneId && state.selectedSceneId !== selectedSceneId) {
+    setStatus(`Target scene ${selectedSceneId} not found`, "error");
+  }
   renderEditor();
   renderGraph({ relayout: true });
 };
@@ -759,8 +1311,19 @@ chapterSelect.addEventListener("change", async () => {
   await loadChapter(chapterSelect.value);
 });
 
+graphLayoutSelect.addEventListener("change", () => {
+  state.graphLayoutMode = graphLayoutSelect.value;
+  renderGraph({ relayout: true });
+  fitGraph();
+});
+
+fitGraphButton.addEventListener("click", fitGraph);
+undoButton.addEventListener("click", undo);
+redoButton.addEventListener("click", redo);
+
 addSceneButton.addEventListener("click", () => {
   if (!state.chapter) return;
+  recordHistory();
   const scene = {
     id: uniqueSceneId(),
     name: "New Scene",
@@ -783,8 +1346,8 @@ saveButton.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(state.chapter),
     });
-    state.dirty = false;
-    setStatus("Saved", "saved");
+    state.savedSnapshot = chapterSnapshot();
+    updateDirtyStatus();
   } catch (error) {
     setStatus(error.message, "error");
     alert(error.message);

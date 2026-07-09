@@ -67,17 +67,17 @@ The first time the game starts up it will load `-start.json-`. The contents of t
         "You rise up slowly and look around.",
         {
             "text": "What is that?",
-            "hideIfAnyFlagMatches": ["coin_taken"]
+            "hideAny": ["coin_taken"]
         },
         {
             "text": "You look at the coin. It's beautiful!",
-            "showIfAnyFlagMatches": ["coin_taken", "coin_stolen"]
+            "showAny": ["coin_taken", "coin_stolen"]
         }
       ],
       "actions": [
         {
           "text": "Take coin",
-          "hideIfAnyFlagMatches": ["coin_taken", "coin_stolen"],
+          "hideAny": ["coin_taken", "coin_stolen"],
           "triggers": [
             {
               "type": "add_flag",
@@ -97,13 +97,13 @@ The first time the game starts up it will load `-start.json-`. The contents of t
 The most important uses for flags is to show or hide paragraphs or actions.
 There are four different flag fields you can use.
 
-#### `hideIfAnyFlagMatches` hide paragraph/action if any flag in this field matches an obtained flag
+#### `hideAny` hide paragraph/action if any flag in this field matches an obtained flag
 
-#### `showIfAnyFlagMatches` show paragraph/action if any flag in this field matches an obtained flag
+#### `showAny` show paragraph/action if any flag in this field matches an obtained flag
 
-#### `showIfAllFlagsMatches` show paragraph/action if all flags in this field matches obtained flags
+#### `showAll` show paragraph/action if all flags in this field matches obtained flags
 
-#### `hideIfAllFlagsMatches` hide paragraph/action if all flags in this field matches obtained flags
+#### `hideAll` hide paragraph/action if all flags in this field matches obtained flags
 
 ## Triggers
 

@@ -6,12 +6,34 @@ import { GameSaveReducer } from "../reducers/GameSaveReducer";
 import { GameInstanceReducer } from "../reducers/GameInstanceReducer";
 import fetchChapter from "../utils/FetchChapter";
 
+const defaultSaveState = {
+  chapterId: "-start-",
+  sceneId: "",
+  flags: [],
+};
+
+const appBasePath = () => new URL(import.meta.env.BASE_URL, window.location.origin).pathname;
+
+const isResetPath = () => {
+  const basePath = appBasePath();
+  return [
+    `${basePath}reset`,
+    `${basePath}reset/`,
+  ].includes(window.location.pathname);
+};
+
 const fetchInitialSaveState = () => {
+  if (isResetPath()) {
+    localStorage.removeItem("save");
+    window.history.replaceState(null, "", appBasePath());
+    return defaultSaveState;
+  }
+
   const localSave = JSON.parse(localStorage.getItem("save"));
   return {
-    chapterId: localSave?.chapterId ? localSave.chapterId : "-start-",
-    sceneId: localSave?.sceneId ? localSave.sceneId : "",
-    flags: localSave?.flags ? [...localSave.flags] : [],
+    chapterId: localSave?.chapterId ? localSave.chapterId : defaultSaveState.chapterId,
+    sceneId: localSave?.sceneId ? localSave.sceneId : defaultSaveState.sceneId,
+    flags: localSave?.flags ? [...localSave.flags] : defaultSaveState.flags,
   };
 };
 
@@ -24,7 +46,8 @@ const initialInstanceState = {
 const App = () => {
   const [saveState, saveDispatch] = useReducer(
     GameSaveReducer,
-    fetchInitialSaveState()
+    undefined,
+    fetchInitialSaveState
   );
 
   const [instanceState, instanceDispatch] = useReducer(

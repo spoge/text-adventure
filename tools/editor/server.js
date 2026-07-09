@@ -31,10 +31,10 @@ const isStringArray = (value) =>
 
 const validateVisibility = (obj, errors, pathLabel) => {
   [
-    "hideIfAnyFlagMatches",
-    "hideIfAllFlagsMatches",
-    "showIfAnyFlagMatches",
-    "showIfAllFlagsMatches",
+    "hideAny",
+    "hideAll",
+    "showAny",
+    "showAll",
   ].forEach((field) => {
     if (obj[field] !== undefined && !isStringArray(obj[field])) {
       errors.push(`${pathLabel}.${field} must be an array of strings`);

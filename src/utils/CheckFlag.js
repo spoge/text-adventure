@@ -1,42 +1,42 @@
-const hideIfAnyFlagMatches = (flags, obj) =>
-  flags.map((f) => obj.hideIfAnyFlagMatches.includes(f)).filter((f) => f)
+const hideAny = (flags, obj) =>
+  flags.map((f) => obj.hideAny.includes(f)).filter((f) => f)
     .length > 0;
-const hideIfAllFlagsMatches = (flags, obj) =>
-  obj.hideIfAllFlagsMatches.map((f) => flags.includes(f)).filter((f) => f)
-    .length === obj.hideIfAllFlagsMatches.length;
+const hideAll = (flags, obj) =>
+  obj.hideAll.map((f) => flags.includes(f)).filter((f) => f)
+    .length === obj.hideAll.length;
 
-const showIfAnyFlagMatches = (flags, obj) =>
-  flags.map((f) => obj.showIfAnyFlagMatches.includes(f)).filter((f) => f)
+const showAny = (flags, obj) =>
+  flags.map((f) => obj.showAny.includes(f)).filter((f) => f)
     .length > 0;
-const showIfAllFlagsMatches = (flags, obj) =>
-  obj.showIfAllFlagsMatches.map((f) => flags.includes(f)).filter((f) => f)
-    .length === obj.showIfAllFlagsMatches.length;
+const showAll = (flags, obj) =>
+  obj.showAll.map((f) => flags.includes(f)).filter((f) => f)
+    .length === obj.showAll.length;
 
 const isVisible = (flags, obj) => {
   if (
-    obj.hideIfAnyFlagMatches !== undefined &&
-    hideIfAnyFlagMatches(flags, obj)
+    obj.hideAny !== undefined &&
+    hideAny(flags, obj)
   ) {
     return false;
   }
   if (
-    obj.hideIfAllFlagsMatches !== undefined &&
-    hideIfAllFlagsMatches(flags, obj)
+    obj.hideAll !== undefined &&
+    hideAll(flags, obj)
   ) {
     return false;
   }
-  if (obj.showIfAnyFlagMatches !== undefined) {
-    return showIfAnyFlagMatches(flags, obj);
+  if (obj.showAny !== undefined) {
+    return showAny(flags, obj);
   }
-  if (obj.showIfAllFlagsMatches !== undefined) {
-    return showIfAllFlagsMatches(flags, obj);
+  if (obj.showAll !== undefined) {
+    return showAll(flags, obj);
   }
   return true;
 };
 
 const hasShowFlags = (obj) => hasShowAnyFlags(obj) || hasShowAllFlags(obj);
-const hasShowAnyFlags = (obj) => obj.showIfAnyFlagMatches !== undefined;
-const hasShowAllFlags = (obj) => obj.showIfAllFlagsMatches !== undefined;
+const hasShowAnyFlags = (obj) => obj.showAny !== undefined;
+const hasShowAllFlags = (obj) => obj.showAll !== undefined;
 
 const getActiveShowFlagIndex = (flags, obj) =>
   hasShowAnyFlags(obj)
@@ -47,24 +47,24 @@ const getActiveShowFlagIndex = (flags, obj) =>
 
 const showAnyFlagsIndex = (flags, obj) => {
   if (
-    obj.showIfAnyFlagMatches === undefined &&
-    !showIfAnyFlagMatches(flags, obj)
+    obj.showAny === undefined &&
+    !showAny(flags, obj)
   ) {
     return flags.length;
   }
-  return flags.findIndex((flag) => obj.showIfAnyFlagMatches.includes(flag));
+  return flags.findIndex((flag) => obj.showAny.includes(flag));
 };
 
 const showAllFlagsIndex = (flags, obj) => {
   if (
-    obj.showIfAllFlagsMatches === undefined &&
-    !showIfAllFlagsMatches(flags, obj)
+    obj.showAll === undefined &&
+    !showAll(flags, obj)
   )
     return flags.length;
 
   const lastFlag = [...flags]
     .sort(() => -1)
-    .find((flag) => obj.showIfAllFlagsMatches.includes(flag));
+    .find((flag) => obj.showAll.includes(flag));
 
   return flags.findIndex((flag) => flag === lastFlag);
 };

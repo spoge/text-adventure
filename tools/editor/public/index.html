@@ -6,6 +6,8 @@
     <title>Text Adventure Editor</title>
     <link rel="stylesheet" href="/editor.css" />
     <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
   </head>
   <body>
     <header class="toolbar">
@@ -14,6 +16,18 @@
         <select id="chapterSelect"></select>
       </div>
       <button id="addSceneButton" type="button">Add Scene</button>
+      <div>
+        <label for="graphLayoutSelect">Graph Layout</label>
+        <select id="graphLayoutSelect">
+          <option value="auto">Auto</option>
+          <option value="directed">Directed</option>
+          <option value="organic">Organic</option>
+          <option value="grid">Grid</option>
+        </select>
+      </div>
+      <button id="fitGraphButton" type="button">Fit Graph</button>
+      <button id="undoButton" type="button" disabled>Undo</button>
+      <button id="redoButton" type="button" disabled>Redo</button>
       <button id="saveButton" type="button">Save</button>
       <span id="status" class="status">Loading chapters...</span>
     </header>
@@ -24,6 +38,9 @@
       </section>
       <aside class="editor-panel">
         <div id="editor"></div>
+      </aside>
+      <aside class="preview-panel">
+        <div id="preview"></div>
       </aside>
     </main>
 

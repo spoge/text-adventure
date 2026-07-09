@@ -3,18 +3,19 @@
 ## Commands
 
 - Use `npm install` to install dependencies; this repo uses `package-lock.json`, not pnpm/yarn/bun lockfiles.
-- Start the CRA dev server with `npm start`.
+- Start the Vite dev server with `npm start`.
 - Start the local chapter editor with `npm run editor`; it serves `tools/editor/public/` and writes `public/game/*.json` through `tools/editor/server.js`.
-- Verify production builds with `npm run build`; `.env` sets `GENERATE_SOURCEMAP=false`.
+- Verify production builds with `npm run build`; `vite.config.js` disables production sourcemaps.
 - Deploy only when explicitly requested: `npm run deploy` runs `npm run build && gh-pages -d build` and publishes the `build/` output.
 - There is no `test` script in `package.json`; do not claim `npm test` is available unless you add it.
 
 ## App Shape
 
-- This is a React 17 Create React App project; the entrypoint is `src/index.js`, which renders `src/components/App.jsx`.
-- Game content is static JSON under `public/game/`; it is fetched at runtime with `${process.env.PUBLIC_URL}/game/${chapterId}.json`.
-- The editor is local tooling only and is not part of the CRA app or deployed `build/` output.
+- This is a React + Vite project; the entrypoint is `src/index.jsx`, which renders `src/components/App.jsx`.
+- Game content is static JSON under `public/game/`; it is fetched at runtime with `${import.meta.env.BASE_URL}game/${chapterId}.json`.
+- The editor is local tooling only and is not part of the Vite app or deployed `build/` output.
 - The first spawn is `public/game/-start-.json`; local saves are stored in `localStorage` under the `save` key and override startup until reset.
+- Visiting `/text-adventure/reset` clears `localStorage.save`, returns the URL to `/text-adventure/`, and respawns from `public/game/-start-.json`.
 - Core game flow is in `src/hooks/useGameLogic.jsx`, trigger dispatch is in `src/utils/DispatchTrigger.js`, and flag visibility rules are in `src/utils/CheckFlag.js`.
 
 ## Game JSON Gotchas
@@ -23,7 +24,7 @@
 - Movement triggers use `target` for the scene and optional `chapterId` for cross-chapter moves. The README's `chapter` field example is stale; code reads `trigger.chapterId`.
 - Supported trigger types are `movement`, `add_flag`, `remove_flag`, and `remove_all_flags`.
 - Paragraphs can be strings or objects with `text` plus flag visibility fields. The string `"---"` renders as a horizontal rule.
-- Flag fields supported by code are `hideIfAnyFlagMatches`, `hideIfAllFlagsMatches`, `showIfAnyFlagMatches`, and `showIfAllFlagsMatches`.
+- Flag fields supported by code are `hideAny`, `hideAll`, `showAny`, and `showAll`.
 - Paragraph objects with show flags are sorted by the order the matching flags were acquired unless `ignoreSortByFlag` is set.
 
 ## Manual Checks
