@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Text Adventure Editor</title>
+    <link rel="stylesheet" href="/editor.css" />
+    <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+  </head>
+  <body>
+    <header class="toolbar">
+      <div>
+        <label for="chapterSelect">Chapter</label>
+        <select id="chapterSelect"></select>
+      </div>
+      <button id="addSceneButton" type="button">Add Scene</button>
+      <button id="saveButton" type="button">Save</button>
+      <span id="status" class="status">Loading chapters...</span>
+    </header>
+
+    <main class="layout">
+      <section class="graph-panel">
+        <div id="graph"></div>
+      </section>
+      <aside class="editor-panel">
+        <div id="editor"></div>
+      </aside>
+    </main>
+
+    <datalist id="sceneIds"></datalist>
+    <script src="/editor.js"></script>
+  </body>
+</html>

@@ -12,20 +12,26 @@ import useDebugCmds from "../hooks/useDebugCmds";
 
 const Game = () => {
   const { debugHelp, debugMode } = useDebugCmds();
-  const { gameRef, scene, flags, availableActions, actionClick } =
+  const { gameRef, scene, flags, availableActions, actionClick, isLoading } =
     useGameLogic();
 
   return (
     <div className="game" ref={gameRef} tabIndex="0">
       <Terminal>
-        <Title title={scene?.name} />
-        <HorizontalLine />
-        <Paragraphs flags={flags} paragraphs={scene?.paragraphs} />
-        <HorizontalLine />
-        {scene?.actions.length > 0 && <SmallTitle title="Actions:" />}
-        <Actions actions={availableActions} onActionClick={actionClick} />
-        {debugHelp && <DebugHelp />}
-        {debugMode && <DebugStats flags={flags} />}
+        {isLoading ? (
+          <div className="loading-message">Loading...</div>
+        ) : (
+          <>
+            <Title title={scene?.name} />
+            <HorizontalLine />
+            <Paragraphs flags={flags} paragraphs={scene?.paragraphs} />
+            <HorizontalLine />
+            {scene?.actions.length > 0 && <SmallTitle title="Actions:" />}
+            <Actions actions={availableActions} onActionClick={actionClick} />
+            {debugHelp && <DebugHelp />}
+            {debugMode && <DebugStats flags={flags} />}
+          </>
+        )}
       </Terminal>
     </div>
   );

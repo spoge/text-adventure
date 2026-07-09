@@ -23,7 +23,9 @@
     {
       "id": "village_square",
       "name": "Village - Square",
-      "paragraphs": ["The square is connected to most areas in the village."],
+      "paragraphs": [
+        "The square is connected to most areas in the village."
+      ],
       "actions": [
         {
           "text": "Go to Tavern",
@@ -45,7 +47,9 @@
         },
         {
           "text": "Go to Shopping District",
-          "showIfAnyFlagMatches": ["opened_village_shopping_district"],
+          "showIfAnyFlagMatches": [
+            "opened_village_shopping_district"
+          ],
           "triggers": [
             {
               "type": "movement",
@@ -55,7 +59,9 @@
         },
         {
           "text": "Go to Fishing Docks",
-          "showIfAnyFlagMatches": ["opened_village_fishing_docs"],
+          "showIfAnyFlagMatches": [
+            "opened_village_fishing_docs"
+          ],
           "triggers": [
             {
               "type": "movement",
@@ -65,7 +71,9 @@
         },
         {
           "text": "Go to Major's House",
-          "showIfAnyFlagMatches": ["opened_village_majors_house"],
+          "showIfAnyFlagMatches": [
+            "opened_village_majors_house"
+          ],
           "triggers": [
             {
               "type": "movement",
@@ -75,7 +83,9 @@
         },
         {
           "text": "Go to Orchards by the High Roads",
-          "showIfAnyFlagMatches": ["opened_village_orchard"],
+          "showIfAnyFlagMatches": [
+            "opened_village_orchard"
+          ],
           "triggers": [
             {
               "type": "movement",
@@ -85,7 +95,9 @@
         },
         {
           "text": "Go to Forest Entrance",
-          "showIfAnyFlagMatches": ["opened_village_forest_entrance"],
+          "showIfAnyFlagMatches": [
+            "opened_village_forest_entrance"
+          ],
           "triggers": [
             {
               "type": "movement",
@@ -157,9 +169,27 @@
       "name": "Village - Tavern",
       "paragraphs": [
         "The first thing that strikes you is the noise. Fishermen know how to keep it lively.",
-        "The tavern smells of good food and drinks - thankfully not too fishy."
+        "The tavern smells of good food and drinks - thankfully not too fishy.",
+        {
+          "text": "> You talked to the barkeep. He recommend checking out the shopping district.",
+          "showIfAnyFlagMatches": [
+            "opened_village_shopping_district"
+          ]
+        }
       ],
       "actions": [
+        {
+          "text": "Talk to the barkeep",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "opened_village_shopping_district"
+            }
+          ],
+          "hideIfAnyFlagMatches": [
+            "opened_village_shopping_district"
+          ]
+        },
         {
           "text": "Back to Village Square",
           "triggers": [
