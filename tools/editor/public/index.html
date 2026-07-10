@@ -15,6 +15,8 @@
         <label for="chapterSelect">Chapter</label>
         <select id="chapterSelect"></select>
       </div>
+      <button id="addChapterButton" type="button">Add Chapter</button>
+      <button id="deleteChapterButton" type="button" class="danger">Delete Chapter</button>
       <button id="addSceneButton" type="button">Add Scene</button>
       <div>
         <label for="graphLayoutSelect">Graph Layout</label>
@@ -28,9 +30,12 @@
       <button id="fitGraphButton" type="button">Fit Graph</button>
       <button id="undoButton" type="button" disabled>Undo</button>
       <button id="redoButton" type="button" disabled>Redo</button>
+      <button id="verifyButton" type="button">Verify</button>
       <button id="saveButton" type="button">Save</button>
       <span id="status" class="status">Loading chapters...</span>
     </header>
+
+    <section id="validationPanel" class="validation-panel" hidden></section>
 
     <main class="layout">
       <section class="graph-panel">
@@ -45,6 +50,8 @@
     </main>
 
     <datalist id="sceneIds"></datalist>
+    <datalist id="startSceneIds"></datalist>
+    <datalist id="chapterIds"></datalist>
     <script src="/editor.js"></script>
   </body>
 </html>

@@ -12,6 +12,7 @@ app.use(express.json({ limit: "5mb" }));
 app.use(express.static(staticDir));
 
 const isValidChapterId = (chapterId) => /^[-\w]+$/.test(chapterId);
+const startChapterId = "-start-";
 
 const chapterPath = (chapterId) => {
   if (!isValidChapterId(chapterId)) {
@@ -25,6 +26,18 @@ const chapterPath = (chapterId) => {
 
 const readJson = async (filePath) =>
   JSON.parse(await fs.readFile(filePath, { encoding: "utf8" }));
+
+const writeJson = async (filePath, value) =>
+  fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
+
+const fileExists = async (filePath) => {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+};
 
 const isStringArray = (value) =>
   Array.isArray(value) && value.every((item) => typeof item === "string");
@@ -131,9 +144,166 @@ const validateChapter = (chapter) => {
   return errors;
 };
 
+const validateStart = (start, chaptersById = new Map()) => {
+  const errors = [];
+  if (!start || typeof start !== "object" || Array.isArray(start)) {
+    return ["Start config must be an object"];
+  }
+  if (typeof start.chapterId !== "string" || !start.chapterId.trim()) {
+    errors.push("chapterId is required");
+  }
+  if (typeof start.sceneId !== "string" || !start.sceneId.trim()) {
+    errors.push("sceneId is required");
+  }
+  if (start.flags !== undefined && !isStringArray(start.flags)) {
+    errors.push("flags must be an array of strings");
+  }
+
+  if (chaptersById.size > 0 && start.chapterId) {
+    const chapter = chaptersById.get(start.chapterId);
+    if (!chapter) {
+      errors.push(`chapterId does not match a chapter: ${start.chapterId}`);
+    } else if (start.sceneId && !chapter.scenes?.some((scene) => scene.id === start.sceneId)) {
+      errors.push(`sceneId does not match a scene in ${start.chapterId}: ${start.sceneId}`);
+    }
+  }
+
+  return errors;
+};
+
+const listGameFiles = async () =>
+  (await fs.readdir(gameDir)).filter((file) => file.endsWith(".json"));
+
+const readGameFiles = async () => {
+  const files = await listGameFiles();
+  const entries = await Promise.all(
+    files.map(async (file) => {
+      const id = path.basename(file, ".json");
+      const json = await readJson(path.join(gameDir, file));
+      return { id, file, json };
+    })
+  );
+  return entries.sort((a, b) => a.id.localeCompare(b.id));
+};
+
+const analyzeGame = async () => {
+  const entries = await readGameFiles();
+  const chapters = entries.filter((entry) => Array.isArray(entry.json.scenes));
+  const start = entries.find((entry) => entry.id === startChapterId);
+  const chaptersById = new Map(chapters.map((entry) => [entry.id, entry.json]));
+  const sceneIdsByChapter = new Map(
+    chapters.map((entry) => [entry.id, new Set(entry.json.scenes.map((scene) => scene.id).filter(Boolean))])
+  );
+  const references = [];
+  const inbound = new Map();
+  const items = [];
+
+  const addInbound = (chapterId, sceneId, reference) => {
+    const key = `${chapterId}:${sceneId}`;
+    if (!inbound.has(key)) inbound.set(key, []);
+    inbound.get(key).push(reference);
+  };
+
+  if (start?.json?.chapterId && start?.json?.sceneId) {
+    const startReference = {
+      fromChapterId: startChapterId,
+      fromSceneId: "start",
+      actionIndex: null,
+      triggerIndex: null,
+      toChapterId: start.json.chapterId,
+      toSceneId: start.json.sceneId,
+      source: "start",
+    };
+    references.push(startReference);
+    addInbound(start.json.chapterId, start.json.sceneId, startReference);
+  }
+
+  chapters.forEach((entry) => {
+    const errors = validateChapter(entry.json);
+    errors.forEach((message) => items.push({ level: "error", chapterId: entry.id, message }));
+
+    entry.json.scenes.forEach((scene) => {
+      (scene.actions || []).forEach((action, actionIndex) => {
+        (action.triggers || []).forEach((trigger, triggerIndex) => {
+          if (trigger?.type !== "movement") return;
+          const toChapterId = trigger.chapterId || entry.id;
+          const toSceneId = trigger.target;
+          const reference = {
+            fromChapterId: entry.id,
+            fromSceneId: scene.id,
+            actionIndex,
+            triggerIndex,
+            actionText: action.text || "",
+            toChapterId,
+            toSceneId,
+          };
+          references.push(reference);
+          if (toSceneId) addInbound(toChapterId, toSceneId, reference);
+
+          if (!toSceneId) {
+            items.push({
+              level: "error",
+              chapterId: entry.id,
+              sceneId: scene.id,
+              message: `Movement trigger is missing a target in action ${actionIndex + 1}`,
+            });
+          } else if (!chaptersById.has(toChapterId)) {
+            items.push({
+              level: "error",
+              chapterId: entry.id,
+              sceneId: scene.id,
+              message: `Movement target chapter does not exist: ${toChapterId}`,
+            });
+          } else if (!sceneIdsByChapter.get(toChapterId)?.has(toSceneId)) {
+            items.push({
+              level: "error",
+              chapterId: entry.id,
+              sceneId: scene.id,
+              message: `Movement target scene does not exist: ${toChapterId}:${toSceneId}`,
+            });
+          }
+        });
+      });
+    });
+  });
+
+  if (start) {
+    validateStart(start.json, chaptersById).forEach((message) => {
+      items.push({ level: "error", chapterId: startChapterId, message });
+    });
+  }
+
+  chapters.forEach((entry) => {
+    const chapterInboundCount = entry.json.scenes.reduce(
+      (count, scene) => count + (inbound.get(`${entry.id}:${scene.id}`)?.length || 0),
+      0
+    );
+    if (chapterInboundCount === 0) {
+      items.push({ level: "warning", chapterId: entry.id, message: "Chapter has no inbound references" });
+    }
+    entry.json.scenes.forEach((scene) => {
+      if (!inbound.has(`${entry.id}:${scene.id}`)) {
+        items.push({
+          level: "info",
+          chapterId: entry.id,
+          sceneId: scene.id,
+          message: "Scene has no inbound references",
+        });
+      }
+    });
+  });
+
+  return { entries, chapters, chaptersById, references, inbound, items };
+};
+
+const referencesForChapter = async (chapterId) => {
+  const analysis = await analyzeGame();
+  return analysis.references.filter((reference) => reference.toChapterId === chapterId);
+};
+
 app.get("/api/chapters", async (_req, res, next) => {
   try {
-    const files = (await fs.readdir(gameDir)).filter((file) => file.endsWith(".json"));
+    const files = await listGameFiles();
     const chapters = await Promise.all(
       files.map(async (file) => {
         const chapterId = path.basename(file, ".json");
@@ -141,14 +311,53 @@ app.get("/api/chapters", async (_req, res, next) => {
         return {
           id: chapterId,
           file,
-          isStart: chapterId === "-start-",
+          isStart: chapterId === startChapterId,
           hasScenes: Array.isArray(json.scenes),
           sceneCount: Array.isArray(json.scenes) ? json.scenes.length : 0,
+          scenes: Array.isArray(json.scenes)
+            ? json.scenes.map((scene) => ({ id: scene.id, name: scene.name || "" }))
+            : [],
         };
       })
     );
 
     res.json(chapters.sort((a, b) => a.id.localeCompare(b.id)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/chapters", async (req, res, next) => {
+  try {
+    const chapterId = String(req.body?.chapterId || "").trim();
+    if (!isValidChapterId(chapterId) || chapterId === startChapterId) {
+      res.status(400).json({ error: "Invalid chapter id" });
+      return;
+    }
+    const filePath = chapterPath(chapterId);
+    if (await fileExists(filePath)) {
+      res.status(409).json({ error: "Chapter already exists" });
+      return;
+    }
+    await writeJson(filePath, {
+      scenes: [
+        {
+          id: "scene_1",
+          name: "New Scene",
+          paragraphs: [""],
+          actions: [],
+        },
+      ],
+    });
+    res.status(201).json({ ok: true, chapterId });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/chapters/:chapterId/references", async (req, res, next) => {
+  try {
+    res.json({ references: await referencesForChapter(req.params.chapterId) });
   } catch (error) {
     next(error);
   }
@@ -166,15 +375,81 @@ app.put("/api/chapters/:chapterId", async (req, res, next) => {
   try {
     const chapterId = req.params.chapterId;
     const filePath = chapterPath(chapterId);
-    const errors = validateChapter(req.body);
+    const analysis = await analyzeGame();
+    const errors = chapterId === startChapterId
+      ? validateStart(req.body, analysis.chaptersById)
+      : validateChapter(req.body);
 
     if (errors.length > 0) {
       res.status(400).json({ errors });
       return;
     }
 
-    await fs.writeFile(filePath, `${JSON.stringify(req.body, null, 2)}\n`);
+    await writeJson(filePath, req.body);
     res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/chapters/:chapterId", async (req, res, next) => {
+  try {
+    const chapterId = req.params.chapterId;
+    if (chapterId === startChapterId) {
+      res.status(400).json({ error: "Cannot delete start config" });
+      return;
+    }
+    const filePath = chapterPath(chapterId);
+    if (!(await fileExists(filePath))) {
+      res.status(404).json({ error: "Chapter not found" });
+      return;
+    }
+
+    const analysis = await analyzeGame();
+    let removedTriggers = 0;
+    await Promise.all(
+      analysis.chapters
+        .filter((entry) => entry.id !== chapterId)
+        .map(async (entry) => {
+          let changed = false;
+          entry.json.scenes.forEach((scene) => {
+            (scene.actions || []).forEach((action) => {
+              const before = action.triggers?.length || 0;
+              action.triggers = (action.triggers || []).filter(
+                (trigger) => !(trigger.type === "movement" && trigger.chapterId === chapterId)
+              );
+              removedTriggers += before - action.triggers.length;
+              if (before !== action.triggers.length) changed = true;
+            });
+          });
+          if (changed) await writeJson(path.join(gameDir, entry.file), entry.json);
+        })
+    );
+
+    const start = analysis.entries.find((entry) => entry.id === startChapterId);
+    if (start?.json?.chapterId === chapterId) {
+      const fallbackChapter = analysis.chapters.find((entry) => entry.id !== chapterId);
+      if (fallbackChapter) {
+        start.json.chapterId = fallbackChapter.id;
+        start.json.sceneId = fallbackChapter.json.scenes[0]?.id || "";
+      } else {
+        start.json.chapterId = "";
+        start.json.sceneId = "";
+      }
+      await writeJson(path.join(gameDir, start.file), start.json);
+    }
+
+    await fs.unlink(filePath);
+    res.json({ ok: true, removedTriggers });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/validation", async (_req, res, next) => {
+  try {
+    const analysis = await analyzeGame();
+    res.json({ items: analysis.items });
   } catch (error) {
     next(error);
   }

@@ -13,9 +13,11 @@ const graphLayoutPadding = 90;
 const graphDirectedNodeSep = 90;
 const graphDirectedRankSep = 190;
 const graphDirectedEdgeSep = 50;
+const graphNodeWidth = 150;
 const graphOrganicNodeRepulsion = 14000;
 const graphOrganicIdealEdgeLength = 230;
 const graphOrganicNodeOverlap = 30;
+const startChapterId = "-start-";
 
 const state = {
   chapterId: "",
@@ -32,6 +34,8 @@ const state = {
   redoStack: [],
   previewFlags: [],
   pendingPreviewMovement: null,
+  pendingGraphNavigation: null,
+  chapterReferences: { references: [] },
   editorView: {
     singleLine: false,
     singleLineFullText: false,
@@ -41,16 +45,22 @@ const state = {
 };
 
 const chapterSelect = document.getElementById("chapterSelect");
+const addChapterButton = document.getElementById("addChapterButton");
+const deleteChapterButton = document.getElementById("deleteChapterButton");
 const addSceneButton = document.getElementById("addSceneButton");
 const graphLayoutSelect = document.getElementById("graphLayoutSelect");
 const fitGraphButton = document.getElementById("fitGraphButton");
 const undoButton = document.getElementById("undoButton");
 const redoButton = document.getElementById("redoButton");
+const verifyButton = document.getElementById("verifyButton");
 const saveButton = document.getElementById("saveButton");
 const statusEl = document.getElementById("status");
+const validationPanel = document.getElementById("validationPanel");
 const editorEl = document.getElementById("editor");
 const previewEl = document.getElementById("preview");
 const sceneIdsEl = document.getElementById("sceneIds");
+const startSceneIdsEl = document.getElementById("startSceneIds");
+const chapterIdsEl = document.getElementById("chapterIds");
 
 const setStatus = (message, className = "") => {
   statusEl.textContent = message;
@@ -130,6 +140,33 @@ const renderSceneIdDatalist = () => {
   });
 };
 
+const renderChapterIdDatalist = () => {
+  chapterIdsEl.innerHTML = "";
+  state.chapters
+    .filter((chapter) => chapter.hasScenes)
+    .forEach((chapter) => {
+      const option = document.createElement("option");
+      option.value = chapter.id;
+      chapterIdsEl.appendChild(option);
+    });
+};
+
+const chapterMetaById = (chapterId) =>
+  state.chapters.find((chapter) => chapter.id === chapterId);
+
+const renderStartSceneIdDatalist = () => {
+  startSceneIdsEl.innerHTML = "";
+  const chapter = chapterMetaById(state.chapter?.chapterId);
+  (chapter?.scenes || []).forEach((scene) => {
+    const option = document.createElement("option");
+    option.value = scene.id;
+    option.label = scene.name ? `${scene.id} - ${scene.name}` : scene.id;
+    startSceneIdsEl.appendChild(option);
+  });
+};
+
+const isStartConfig = () => state.chapterId === startChapterId;
+
 const movementTriggers = (scene) =>
   scene.actions.flatMap((action, actionIndex) =>
     (action.triggers || [])
@@ -143,7 +180,69 @@ const graphTextPreview = (value, maxLength = 48) => {
   return `${text.slice(0, maxLength - 3)}...`;
 };
 
+const externalNodeId = (chapterId, sceneId) => `external:${chapterId}:${sceneId}`;
+
+const updateExternalNodeLabel = (node) => {
+  if (node.start === "yes") {
+    node.label = "Start";
+  } else if (node.enter === "yes" && node.external === "yes") {
+    node.both = "yes";
+    node.label = `${node.chapterId}\n${node.sceneId}`;
+  } else if (node.enter === "yes") {
+    node.label = `Enter from ${node.chapterId}\n${node.sceneId}`;
+  } else if (node.external === "yes") {
+    node.label = `Exit to ${node.chapterId}\n${node.sceneId}`;
+  }
+};
+
+const addOrUpdateExternalNode = (nodesById, id, data) => {
+  const existing = nodesById.get(id) || { id };
+  Object.assign(existing, data);
+  updateExternalNodeLabel(existing);
+  nodesById.set(id, existing);
+};
+
+const startGraphElements = () => {
+  if (!state.chapter || state.chapterId !== startChapterId) return [];
+  const startNodeId = "start-node";
+  const targetNodeId = externalNodeId(state.chapter.chapterId || "missing", state.chapter.sceneId || "missing");
+  return [
+    {
+      data: {
+        id: startNodeId,
+        label: "Start",
+        start: "yes",
+        chapterId: startChapterId,
+        sceneId: "",
+        navigationKind: "start",
+      },
+    },
+    {
+      data: {
+        id: targetNodeId,
+        label: `Exit to ${state.chapter.chapterId || "missing"}\n${state.chapter.sceneId || "missing"}`,
+        external: "yes",
+        chapterId: state.chapter.chapterId,
+        sceneId: state.chapter.sceneId,
+        navigationKind: "exit",
+      },
+    },
+    {
+      data: {
+        id: "start-edge",
+        source: startNodeId,
+        target: targetNodeId,
+        label: "starts at",
+        crossChapter: "yes",
+      },
+    },
+  ];
+};
+
 const graphElements = () => {
+  if (state.chapterId === startChapterId) return startGraphElements();
+  if (!state.chapter?.scenes) return [];
+  const localSceneIds = new Set(state.chapter.scenes.map((scene) => scene.id));
   const nodes = state.chapter.scenes.map((scene) => ({
     data: {
       id: scene.id,
@@ -151,24 +250,29 @@ const graphElements = () => {
     },
   }));
 
-  const externalNodes = [];
-  const externalNodeIds = new Set();
+  const externalNodesById = new Map();
 
   const edges = state.chapter.scenes.flatMap((scene) =>
     movementTriggers(scene).map(({ action, actionIndex, trigger, triggerIndex }) => {
       const isCrossChapter = trigger.chapterId && trigger.chapterId !== state.chapterId;
+      const isMissingLocal = !isCrossChapter && !localSceneIds.has(trigger.target);
       const targetId = isCrossChapter
-        ? `${trigger.chapterId}:${trigger.target}`
+        ? externalNodeId(trigger.chapterId, trigger.target)
+        : isMissingLocal
+          ? `missing:${trigger.target}`
         : trigger.target;
 
-      if (isCrossChapter && !externalNodeIds.has(targetId)) {
-        externalNodeIds.add(targetId);
-        externalNodes.push({
-          data: {
-            id: targetId,
-            label: `${trigger.chapterId}\n${trigger.target}`,
-            external: "yes",
-          },
+      if (isCrossChapter) {
+        addOrUpdateExternalNode(externalNodesById, targetId, {
+          external: "yes",
+          chapterId: trigger.chapterId,
+          sceneId: trigger.target,
+          navigationKind: "exit",
+        });
+      } else if (isMissingLocal) {
+        addOrUpdateExternalNode(externalNodesById, targetId, {
+          label: `Missing target\n${trigger.target}`,
+          missing: "yes",
         });
       }
 
@@ -181,12 +285,42 @@ const graphElements = () => {
             isCrossChapter ? `${action.text} (${trigger.chapterId})` : action.text
           ),
           crossChapter: isCrossChapter ? "yes" : "no",
+          missing: isMissingLocal ? "yes" : "no",
         },
       };
     })
   );
 
-  return [...nodes, ...externalNodes, ...edges];
+  const inboundEdges = (state.chapterReferences.references || [])
+    .filter(
+      (reference) =>
+        reference.toChapterId === state.chapterId &&
+        localSceneIds.has(reference.toSceneId) &&
+        reference.fromChapterId !== state.chapterId
+    )
+    .map((reference, index) => {
+      const isStart = reference.fromChapterId === startChapterId;
+      const nodeId = isStart ? "start-node" : externalNodeId(reference.fromChapterId, reference.fromSceneId);
+      addOrUpdateExternalNode(externalNodesById, nodeId, {
+        enter: "yes",
+        start: isStart ? "yes" : undefined,
+        chapterId: reference.fromChapterId,
+        sceneId: isStart ? "" : reference.fromSceneId,
+        navigationKind: isStart ? "start" : "enter",
+      });
+      return {
+        data: {
+          id: `enter-edge:${reference.fromChapterId}:${reference.fromSceneId}:${index}`,
+          source: nodeId,
+          target: reference.toSceneId,
+          label: graphTextPreview(reference.actionText || "entry"),
+          crossChapter: "yes",
+        },
+      };
+    });
+
+  const externalNodes = [...externalNodesById.values()].map((data) => ({ data }));
+  return [...nodes, ...externalNodes, ...edges, ...inboundEdges];
 };
 
 const nodePositions = () => {
@@ -231,22 +365,81 @@ const clampGraphPan = () => {
   state.isClampingGraphPan = false;
 };
 
+const resizeGraph = () => {
+  if (!state.graph) return;
+  requestAnimationFrame(() => {
+    if (!state.graph) return;
+    state.graph.resize();
+    clampGraphPan();
+  });
+};
+
+const fitGraphAfterLayout = () => {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(fitGraph);
+  });
+};
+
 const fitGraph = () => {
   if (!state.graph) return;
+  state.graph.resize();
   state.graph.fit(undefined, 60);
   clampGraphPan();
 };
 
 const graphComplexity = () => {
-  const nodeCount = state.chapter?.scenes?.length || 0;
+  const scenes = state.chapter?.scenes || [];
+  const localSceneIds = new Set(scenes.map((scene) => scene.id));
+  const localEdges = scenes.flatMap((scene) =>
+    movementTriggers(scene)
+      .filter(({ trigger }) => !trigger.chapterId && localSceneIds.has(trigger.target))
+      .map(({ trigger }) => ({ source: scene.id, target: trigger.target }))
+  );
+  const incoming = new Map();
+  const outgoing = new Map();
+  localEdges.forEach((edge) => {
+    outgoing.set(edge.source, (outgoing.get(edge.source) || 0) + 1);
+    incoming.set(edge.target, (incoming.get(edge.target) || 0) + 1);
+  });
+  const branchyNodeCount = scenes.filter(
+    (scene) => (incoming.get(scene.id) || 0) > 1 || (outgoing.get(scene.id) || 0) > 1
+  ).length;
+  const nodeCount = scenes.length;
   const edgeCount = state.chapter?.scenes?.flatMap(movementTriggers).length || 0;
-  return { nodeCount, edgeCount, density: nodeCount === 0 ? 0 : edgeCount / nodeCount };
+  const localEdgeCount = localEdges.length;
+  const chainLike =
+    nodeCount >= 5 &&
+    localEdgeCount >= nodeCount - 2 &&
+    localEdgeCount <= nodeCount + 1 &&
+    branchyNodeCount <= Math.max(1, Math.floor(nodeCount * 0.2));
+  return {
+    nodeCount,
+    edgeCount,
+    localEdgeCount,
+    chainLike,
+    density: nodeCount === 0 ? 0 : edgeCount / nodeCount,
+  };
+};
+
+const graphContainerSize = () => {
+  const container = state.graph?.container() || document.getElementById("graph");
+  return {
+    width: container?.clientWidth || 0,
+    height: container?.clientHeight || 0,
+  };
 };
 
 const resolvedGraphLayoutMode = () => {
-  if (state.graphLayoutMode !== "auto") return state.graphLayoutMode;
-  const { nodeCount, density } = graphComplexity();
-  return nodeCount > 0 && density > 1.25 ? "organic" : "directed";
+  if (state.graphLayoutMode !== "auto") return { type: state.graphLayoutMode };
+  const { nodeCount, density, chainLike } = graphComplexity();
+  if (nodeCount > 0 && density > 1.25 && !chainLike) return { type: "organic" };
+
+  const { width } = graphContainerSize();
+  const estimatedHorizontalWidth = nodeCount * graphNodeWidth + Math.max(0, nodeCount - 1) * graphDirectedRankSep;
+  if (chainLike && width > 0 && estimatedHorizontalWidth > width * 1.15) {
+    return { type: "directed", rankDir: "TB" };
+  }
+  return { type: "directed", rankDir: "LR" };
 };
 
 const ensureGraphLayoutExtensions = () => {
@@ -255,40 +448,73 @@ const ensureGraphLayoutExtensions = () => {
   state.graphDagreRegistered = true;
 };
 
-const graphLayoutOptions = () => ({
-  directed: {
-    name: "dagre",
-    animate: false,
-    directed: true,
-    edgeSep: graphDirectedEdgeSep,
-    fit: false,
-    nodeSep: graphDirectedNodeSep,
-    padding: graphLayoutPadding,
-    rankDir: "LR",
-    rankSep: graphDirectedRankSep,
-    spacingFactor: 1.35,
-  },
-  organic: {
-    name: "cose",
-    animate: false,
-    componentSpacing: 130,
-    edgeElasticity: 80,
-    idealEdgeLength: graphOrganicIdealEdgeLength,
-    nodeOverlap: graphOrganicNodeOverlap,
-    nodeRepulsion: graphOrganicNodeRepulsion,
-    padding: graphLayoutPadding,
-  },
-  grid: {
-    name: "grid",
-    animate: false,
-    avoidOverlap: true,
-    avoidOverlapPadding: 45,
-    padding: graphLayoutPadding,
-  },
-}[resolvedGraphLayoutMode()]);
+const graphLayoutOptions = () => {
+  const mode = resolvedGraphLayoutMode();
+  return ({
+    directed: {
+      name: "dagre",
+      animate: false,
+      directed: true,
+      edgeSep: graphDirectedEdgeSep,
+      fit: false,
+      nodeSep: graphDirectedNodeSep,
+      padding: graphLayoutPadding,
+      rankDir: mode.rankDir || "LR",
+      rankSep: graphDirectedRankSep,
+      spacingFactor: 1.35,
+    },
+    organic: {
+      name: "cose",
+      animate: false,
+      componentSpacing: 130,
+      edgeElasticity: 80,
+      idealEdgeLength: graphOrganicIdealEdgeLength,
+      nodeOverlap: graphOrganicNodeOverlap,
+      nodeRepulsion: graphOrganicNodeRepulsion,
+      padding: graphLayoutPadding,
+    },
+    grid: {
+      name: "grid",
+      animate: false,
+      avoidOverlap: true,
+      avoidOverlapPadding: 45,
+      padding: graphLayoutPadding,
+    },
+  }[mode.type]);
+};
+
+const sameGraphNavigation = (data) =>
+  state.pendingGraphNavigation?.chapterId === data.chapterId &&
+  state.pendingGraphNavigation?.sceneId === data.sceneId &&
+  state.pendingGraphNavigation?.navigationKind === data.navigationKind;
+
+const openGraphNavigation = async (data) => {
+  if (data.navigationKind === "start" && state.chapterId === startChapterId) return;
+  if (!sameGraphNavigation(data)) {
+    state.pendingGraphNavigation = {
+      chapterId: data.chapterId,
+      sceneId: data.sceneId,
+      navigationKind: data.navigationKind,
+    };
+    setStatus(`Opens ${data.chapterId} / ${data.sceneId}. Click again.`, "dirty");
+    return;
+  }
+  if (state.dirty) {
+    setStatus(`Save before opening ${data.chapterId} / ${data.sceneId}.`, "error");
+    return;
+  }
+  state.pendingGraphNavigation = null;
+  if (data.navigationKind === "start") {
+    await loadChapter(startChapterId);
+    chapterSelect.value = startChapterId;
+    return;
+  }
+  await loadChapter(data.chapterId, data.sceneId);
+  chapterSelect.value = data.chapterId;
+};
 
 const renderGraph = ({ relayout = false } = {}) => {
-  if (!state.chapter) return;
+  if (!state.chapter || (!state.chapter.scenes && state.chapterId !== startChapterId)) return;
 
   ensureGraphLayoutExtensions();
   const elements = graphElements();
@@ -328,6 +554,46 @@ const renderGraph = ({ relayout = false } = {}) => {
           },
         },
         {
+          selector: 'node[enter = "yes"]',
+          style: {
+            "background-color": "#233242",
+            color: "#f2f5f8",
+            "border-color": "#66d9ff",
+            "border-style": "dashed",
+            "border-width": 2,
+          },
+        },
+        {
+          selector: 'node[both = "yes"]',
+          style: {
+            "background-color": "#293447",
+            color: "#f2f5f8",
+            "border-color": "#d7e86f",
+            "border-style": "double",
+            "border-width": 4,
+          },
+        },
+        {
+          selector: 'node[start = "yes"]',
+          style: {
+            "background-color": "#173324",
+            color: "#f2f5f8",
+            "border-color": "#5bf870",
+            "border-style": "dashed",
+            "border-width": 3,
+          },
+        },
+        {
+          selector: 'node[missing = "yes"]',
+          style: {
+            "background-color": "#3a2026",
+            color: "#f2f5f8",
+            "border-color": "#ff6b6b",
+            "border-style": "dashed",
+            "border-width": 2,
+          },
+        },
+        {
           selector: "node:selected",
           style: {
             "border-color": "#ffffff",
@@ -360,11 +626,24 @@ const renderGraph = ({ relayout = false } = {}) => {
             "target-arrow-color": "#ffd166",
           },
         },
+        {
+          selector: 'edge[missing = "yes"]',
+          style: {
+            "line-color": "#ff6b6b",
+            "target-arrow-color": "#ff6b6b",
+          },
+        },
       ],
       layout: graphLayoutOptions(),
     });
 
     state.graph.on("tap", "node", (event) => {
+      const data = event.target.data();
+      if (data.navigationKind) {
+        openGraphNavigation(data);
+        return;
+      }
+      state.pendingGraphNavigation = null;
       state.pendingPreviewMovement = null;
       state.selectedSceneId = event.target.id();
       renderEditor();
@@ -378,7 +657,9 @@ const renderGraph = ({ relayout = false } = {}) => {
     if (relayout) state.graph.layout(graphLayoutOptions()).run();
   }
 
+  resizeGraph();
   clampGraphPan();
+  if (relayout) fitGraphAfterLayout();
 
   if (state.selectedSceneId) {
     const selected = state.graph.getElementById(state.selectedSceneId);
@@ -1120,9 +1401,55 @@ const renderAction = (scene, action, index) => {
   return card;
 };
 
+const renderStartEditor = () => {
+  renderSceneIdDatalist();
+  renderStartSceneIdDatalist();
+  editorEl.innerHTML = "";
+  previewEl.innerHTML = '<div class="empty-state">Start config has no scene preview.</div>';
+
+  const header = document.createElement("div");
+  header.className = "section-header";
+  const title = document.createElement("h2");
+  title.textContent = "Start Config";
+  header.appendChild(title);
+  editorEl.appendChild(header);
+
+  const fields = document.createElement("div");
+  fields.className = "field-row";
+  fields.append(
+    field("Starting chapter", state.chapter.chapterId, (value) => {
+      state.chapter.chapterId = value.trim();
+      markDirty();
+      renderStartSceneIdDatalist();
+      renderGraph({ relayout: true });
+    }, { list: "chapterIds" }),
+    field("Starting scene", state.chapter.sceneId, (value) => {
+      state.chapter.sceneId = value.trim();
+      markDirty();
+      renderGraph({ relayout: true });
+    }, { list: "startSceneIds" })
+  );
+  editorEl.appendChild(fields);
+
+  const flagsSection = document.createElement("section");
+  flagsSection.className = "section";
+  flagsSection.appendChild(
+    field("Starting flags", formatFlags(state.chapter.flags), (value) => {
+      const flags = splitFlags(value);
+      state.chapter.flags = flags;
+      markDirty();
+    })
+  );
+  editorEl.appendChild(flagsSection);
+};
+
 const renderEditor = () => {
   renderSceneIdDatalist();
   editorEl.innerHTML = "";
+  if (isStartConfig()) {
+    renderStartEditor();
+    return;
+  }
   const scene = sceneById(state.selectedSceneId);
   if (!scene) {
     editorEl.innerHTML = '<div class="empty-state">Select a scene node to edit it.</div>';
@@ -1154,8 +1481,26 @@ const renderEditor = () => {
     button("Collapse all", () => collapseSceneGroups(scene), "small"),
     button("Expand all", () => expandSceneGroups(scene), "small"),
     button("Delete Scene", () => {
-      if (!confirm(`Delete scene ${scene.id}?`)) return;
+      const references = state.chapter.scenes.flatMap((item) =>
+        (item.actions || []).flatMap((action, actionIndex) =>
+          (action.triggers || [])
+            .map((trigger, triggerIndex) => ({ item, action, actionIndex, trigger, triggerIndex }))
+            .filter(
+              ({ trigger }) =>
+                trigger.type === "movement" &&
+                trigger.chapterId === undefined &&
+                trigger.target === scene.id
+            )
+        )
+      );
+      const warning = references.length > 0
+        ? `\n\n${references.length} movement trigger(s) reference this scene and will be removed.`
+        : "";
+      if (!confirm(`Delete scene ${scene.id}?${warning}`)) return;
       recordHistory();
+      references.forEach(({ action, trigger }) => {
+        action.triggers = (action.triggers || []).filter((item) => item !== trigger);
+      });
       state.chapter.scenes = state.chapter.scenes.filter((item) => item !== scene);
       state.selectedSceneId = state.chapter.scenes[0]?.id || "";
       markDirty();
@@ -1265,9 +1610,14 @@ const loadChapter = async (chapterId, selectedSceneId) => {
   state.chapter = null;
   state.selectedSceneId = "";
   state.dirty = false;
+  state.pendingGraphNavigation = null;
+  state.chapterReferences = { references: [] };
   setStatus("Loading chapter...");
   const chapter = await api(`/api/chapters/${chapterId}`);
   state.chapter = chapter;
+  if (chapter.scenes) {
+    state.chapterReferences = await api(`/api/chapters/${chapterId}/references`);
+  }
   state.selectedSceneId = chapter.scenes?.some((scene) => scene.id === selectedSceneId)
     ? selectedSceneId
     : chapter.scenes?.[0]?.id || "";
@@ -1276,30 +1626,38 @@ const loadChapter = async (chapterId, selectedSceneId) => {
   state.undoStack = [];
   state.redoStack = [];
   state.editorView.collapsedGroups = {};
+  addSceneButton.disabled = !chapter.scenes;
+  fitGraphButton.disabled = !chapter.scenes && chapterId !== startChapterId;
+  deleteChapterButton.disabled = chapterId === startChapterId;
   clearExpandedRows();
   updateDirtyStatus();
   if (selectedSceneId && state.selectedSceneId !== selectedSceneId) {
     setStatus(`Target scene ${selectedSceneId} not found`, "error");
   }
   renderEditor();
-  renderGraph({ relayout: true });
+  if (chapter.scenes || chapterId === startChapterId) {
+    renderGraph({ relayout: true });
+  } else if (state.graph) {
+    state.graph.elements().remove();
+  }
 };
 
 const loadChapters = async () => {
   state.chapters = await api("/api/chapters");
-  const editableChapters = state.chapters.filter((chapter) => chapter.hasScenes);
+  const chapters = state.chapters.filter((chapter) => chapter.hasScenes || chapter.isStart);
   chapterSelect.innerHTML = "";
-  editableChapters.forEach((chapter) => {
+  chapters.forEach((chapter) => {
     const option = document.createElement("option");
     option.value = chapter.id;
-    option.textContent = `${chapter.id} (${chapter.sceneCount})`;
+    option.textContent = chapter.isStart ? `${chapter.id} (start)` : `${chapter.id} (${chapter.sceneCount})`;
     chapterSelect.appendChild(option);
   });
+  renderChapterIdDatalist();
 
-  if (editableChapters.length > 0) {
-    await loadChapter(editableChapters[0].id);
+  if (chapters.length > 0) {
+    await loadChapter(chapters[0].id);
   } else {
-    setStatus("No editable chapters found", "error");
+    setStatus("No chapters found", "error");
   }
 };
 
@@ -1314,15 +1672,99 @@ chapterSelect.addEventListener("change", async () => {
 graphLayoutSelect.addEventListener("change", () => {
   state.graphLayoutMode = graphLayoutSelect.value;
   renderGraph({ relayout: true });
-  fitGraph();
 });
 
 fitGraphButton.addEventListener("click", fitGraph);
 undoButton.addEventListener("click", undo);
 redoButton.addEventListener("click", redo);
 
+const renderValidationResults = (items) => {
+  validationPanel.innerHTML = "";
+  validationPanel.hidden = false;
+  const heading = document.createElement("div");
+  heading.className = "validation-heading";
+  const errorCount = items.filter((item) => item.level === "error").length;
+  const warningCount = items.filter((item) => item.level === "warning").length;
+  const infoCount = items.filter((item) => item.level === "info").length;
+  heading.textContent = `Verification: ${errorCount} errors, ${warningCount} warnings, ${infoCount} info`;
+  validationPanel.appendChild(heading);
+
+  if (items.length === 0) {
+    const item = document.createElement("div");
+    item.className = "validation-item";
+    item.textContent = "No issues found.";
+    validationPanel.appendChild(item);
+    return;
+  }
+
+  items.forEach((result) => {
+    const item = document.createElement("div");
+    item.className = `validation-item ${result.level}`;
+    const location = [result.chapterId, result.sceneId].filter(Boolean).join(" / ");
+    item.textContent = location ? `${result.level}: ${location}: ${result.message}` : `${result.level}: ${result.message}`;
+    validationPanel.appendChild(item);
+  });
+  resizeGraph();
+};
+
+verifyButton.addEventListener("click", async () => {
+  try {
+    setStatus("Verifying...");
+    const result = await api("/api/validation");
+    renderValidationResults(result.items || []);
+    setStatus("Verification complete", "saved");
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+});
+
+addChapterButton.addEventListener("click", async () => {
+  if (state.dirty && !confirm("Discard unsaved changes?")) return;
+  const chapterId = prompt("New chapter id");
+  if (!chapterId) return;
+  try {
+    await api("/api/chapters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chapterId: chapterId.trim() }),
+    });
+    await loadChapters();
+    chapterSelect.value = chapterId.trim();
+    await loadChapter(chapterId.trim());
+  } catch (error) {
+    setStatus(error.message, "error");
+    alert(error.message);
+  }
+});
+
+deleteChapterButton.addEventListener("click", async () => {
+  if (!state.chapterId || state.chapterId === startChapterId) {
+    alert("The start config cannot be deleted.");
+    return;
+  }
+  if (state.dirty && !confirm("Discard unsaved changes before deleting this chapter?")) return;
+  try {
+    const result = await api(`/api/chapters/${state.chapterId}/references`);
+    const references = result.references || [];
+    const examples = references
+      .slice(0, 5)
+      .map((reference) => `${reference.fromChapterId}/${reference.fromSceneId}`)
+      .join(", ");
+    const more = references.length > 5 ? `, and ${references.length - 5} more` : "";
+    const warning = references.length > 0
+      ? `\n\n${references.length} reference(s) point to this chapter from ${examples}${more}. Movement triggers will be removed automatically; start config will be repointed if needed.`
+      : "";
+    if (!confirm(`Delete chapter ${state.chapterId}?${warning}`)) return;
+    await api(`/api/chapters/${state.chapterId}`, { method: "DELETE" });
+    await loadChapters();
+  } catch (error) {
+    setStatus(error.message, "error");
+    alert(error.message);
+  }
+});
+
 addSceneButton.addEventListener("click", () => {
-  if (!state.chapter) return;
+  if (!state.chapter?.scenes) return;
   recordHistory();
   const scene = {
     id: uniqueSceneId(),
@@ -1357,3 +1799,5 @@ saveButton.addEventListener("click", async () => {
 loadChapters().catch((error) => {
   setStatus(error.message, "error");
 });
+
+window.addEventListener("resize", resizeGraph);

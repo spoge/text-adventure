@@ -17,7 +17,11 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
+  display: flex;
+  flex-direction: column;
   font-family: Arial, sans-serif;
+  height: 100vh;
+  overflow: hidden;
 }
 
 button,
@@ -93,6 +97,8 @@ textarea {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
   display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 0.75rem;
   min-height: 4rem;
   padding: 0.75rem;
@@ -119,14 +125,56 @@ textarea {
   color: var(--accent);
 }
 
+.validation-panel {
+  background: #10141b;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  flex: 0 0 auto;
+  gap: 0.4rem;
+  max-height: 16rem;
+  overflow: auto;
+  padding: 0.75rem;
+}
+
+.validation-panel[hidden] {
+  display: none;
+}
+
+.validation-item {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  padding: 0.45rem 0.6rem;
+}
+
+.validation-item.error {
+  border-color: rgba(255, 107, 107, 0.55);
+  color: var(--danger);
+}
+
+.validation-item.warning {
+  border-color: rgba(255, 209, 102, 0.55);
+  color: #ffd166;
+}
+
+.validation-item.info {
+  border-color: rgba(123, 135, 152, 0.55);
+}
+
+.validation-heading {
+  font-weight: bold;
+}
+
 .layout {
   display: grid;
+  flex: 1 1 auto;
   grid-template-columns: minmax(0, 1fr) 28rem 28rem;
-  height: calc(100vh - 4rem);
+  min-height: 0;
 }
 
 .graph-panel {
   min-width: 0;
+  min-height: 0;
 }
 
 #graph {

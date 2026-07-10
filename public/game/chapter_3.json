@@ -37,26 +37,38 @@
         "You hear a sound from a nearby tree - a small critter of some kind?",
         {
           "text": "> You put your food on the tree stump. A little squirrel appears, grabs the bag and runs off. It left behind something that looks like a potion vial.",
-          "showAny": ["gave_squirrel_food"]
+          "showAny": [
+            "gave_squirrel_food"
+          ]
         },
         {
           "text": "> You put the coconut on the tree stump. A little squirrel jumps up and carries the coconut away. You find a piece of paper on the tree stump.",
-          "showAny": ["gave_squirrel_coconut"]
+          "showAny": [
+            "gave_squirrel_coconut"
+          ]
         },
         {
           "text": "> You pick up a potion of strength(?).",
-          "showAny": ["have_strength_potion"]
+          "showAny": [
+            "have_strength_potion"
+          ]
         },
         {
           "text": "> You pick up the paper. It seems to be an entry permit to a nearby village.",
-          "showAny": ["have_permit"]
+          "showAny": [
+            "have_permit"
+          ]
         }
       ],
       "actions": [
         {
           "text": "Put food on the stump",
-          "showAny": ["have_food"],
-          "hideAny": ["gave_squirrel_food"],
+          "showAny": [
+            "have_food"
+          ],
+          "hideAny": [
+            "gave_squirrel_food"
+          ],
           "triggers": [
             {
               "type": "add_flag",
@@ -70,8 +82,12 @@
         },
         {
           "text": "Pick up the potion",
-          "showAny": ["gave_squirrel_food"],
-          "hideAny": ["took_strength_potion"],
+          "showAny": [
+            "gave_squirrel_food"
+          ],
+          "hideAny": [
+            "took_strength_potion"
+          ],
           "triggers": [
             {
               "type": "add_flag",
@@ -85,8 +101,12 @@
         },
         {
           "text": "Put the coconut on the stump",
-          "showAny": ["have_opened_coconut"],
-          "hideAny": ["gave_squirrel_coconut"],
+          "showAny": [
+            "have_opened_coconut"
+          ],
+          "hideAny": [
+            "gave_squirrel_coconut"
+          ],
           "triggers": [
             {
               "type": "add_flag",
@@ -100,8 +120,12 @@
         },
         {
           "text": "Pick up the piece of paper",
-          "showAny": ["gave_squirrel_coconut"],
-          "hideAny": ["have_permit"],
+          "showAny": [
+            "gave_squirrel_coconut"
+          ],
+          "hideAny": [
+            "have_permit"
+          ],
           "triggers": [
             {
               "type": "add_flag",
@@ -175,15 +199,21 @@
         "A poor soul ended their journey here many years ago.",
         {
           "text": "There's a bag and a whetstone beside the skeleton.",
-          "showAny": ["choose_sword"]
+          "showAny": [
+            "choose_sword"
+          ]
         },
         {
           "text": "There's a bag beside the skeleton.",
-          "showAny": ["choose_food"]
+          "showAny": [
+            "choose_food"
+          ]
         },
         {
           "text": "> You sharpen the sword with the whetstone. It's still weak, but it should cut more effectively now.",
-          "showAny": ["have_sharpened_sword"]
+          "showAny": [
+            "have_sharpened_sword"
+          ]
         }
       ],
       "actions": [
@@ -198,8 +228,12 @@
         },
         {
           "text": "Sharpen sword with whetstone",
-          "hideAny": ["have_sharpened_sword"],
-          "showAny": ["have_sword"],
+          "hideAny": [
+            "have_sharpened_sword"
+          ],
+          "showAny": [
+            "have_sword"
+          ],
           "triggers": [
             {
               "type": "remove_flag",
@@ -229,17 +263,25 @@
         "In the bag you find a journal.",
         {
           "text": "\"I didn't intend for it to end here. After all these years. After finally creating a potion of super strength, and acquiring the permit to enter the village. That annoying squirrel is taunting me. It will just end here...\"",
-          "showAll": ["read_skeleton_journal", "choose_food"]
+          "showAll": [
+            "read_skeleton_journal",
+            "choose_food"
+          ]
         },
         {
           "text": "\"I didn't intend for it to end here. After all these years. After finally acquiring that permit to enter the village. That annoying squirrel is taunting me. It will just end here...\"",
-          "showAll": ["read_skeleton_journal", "choose_sword"]
+          "showAll": [
+            "read_skeleton_journal",
+            "choose_sword"
+          ]
         }
       ],
       "actions": [
         {
           "text": "Read journal",
-          "hideAny": ["read_skeleton_journal"],
+          "hideAny": [
+            "read_skeleton_journal"
+          ],
           "triggers": [
             {
               "type": "add_flag",
@@ -267,7 +309,9 @@
         "He looks kinda grumpy.",
         {
           "text": "> You try to convince him to let you enter. But he simply says: \"No permit, no entry.\"",
-          "showAny": ["village_entrance_convince_guard_fail"]
+          "showAny": [
+            "village_entrance_convince_guard_fail"
+          ]
         },
         {
           "text": "> You try to bribe him with the potion. \"I don't want shady looking thing. I want permit.\"",
@@ -283,11 +327,15 @@
         },
         {
           "text": "> You try to bribe him with your food. \"I am full. I want permit.\"",
-          "showAny": ["village_entrance_convince_guard_fail_food"]
+          "showAny": [
+            "village_entrance_convince_guard_fail_food"
+          ]
         },
         {
           "text": "> You try to bribe him with your sword. \"I have better sword. I want permit.\"",
-          "showAny": ["village_entrance_convince_guard_fail_sword"]
+          "showAny": [
+            "village_entrance_convince_guard_fail_sword"
+          ]
         },
         {
           "text": "> You try to bribe him with your sharpened sword. \"Nice sword, but I have better sword. I want permit.\"",
@@ -297,7 +345,9 @@
         },
         {
           "text": "> You show the permit to the guard. \"One permit, one entry.\"",
-          "showAny": ["village_entrance_convince_guard_success"]
+          "showAny": [
+            "village_entrance_convince_guard_success"
+          ]
         }
       ],
       "actions": [
@@ -401,8 +451,12 @@
         },
         {
           "text": "Show permit to guard",
-          "showAny": ["have_permit"],
-          "hideAny": ["village_entrance_convince_guard_success"],
+          "showAny": [
+            "have_permit"
+          ],
+          "hideAny": [
+            "village_entrance_convince_guard_success"
+          ],
           "triggers": [
             {
               "type": "add_flag",
@@ -412,7 +466,9 @@
         },
         {
           "text": "Enter village",
-          "showAny": ["village_entrance_convince_guard_success"],
+          "showAny": [
+            "village_entrance_convince_guard_success"
+          ],
           "triggers": [
             {
               "type": "movement",
