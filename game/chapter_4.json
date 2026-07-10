@@ -46,64 +46,11 @@
           ]
         },
         {
-          "text": "Go to Shopping District",
-          "showAny": [
-            "opened_village_shopping_district"
-          ],
-          "triggers": [
-            {
-              "type": "movement",
-              "target": "village_shopping_district"
-            }
-          ]
-        },
-        {
-          "text": "Go to Fishing Docks",
-          "showAny": [
-            "opened_village_fishing_docs"
-          ],
-          "triggers": [
-            {
-              "type": "movement",
-              "target": "village_fishing_docks"
-            }
-          ]
-        },
-        {
-          "text": "Go to Major's House",
-          "showAny": [
-            "opened_village_majors_house"
-          ],
-          "triggers": [
-            {
-              "type": "movement",
-              "target": "village_majors_house"
-            }
-          ]
-        },
-        {
           "text": "Go to Orchards by the High Roads",
           "showAny": [
             "opened_village_orchard"
           ],
-          "triggers": [
-            {
-              "type": "movement",
-              "target": "village_orchards"
-            }
-          ]
-        },
-        {
-          "text": "Go to Forest Entrance",
-          "showAny": [
-            "opened_village_forest_entrance"
-          ],
-          "triggers": [
-            {
-              "type": "movement",
-              "target": "village_forest_entrance"
-            }
-          ]
+          "triggers": []
         }
       ]
     },
@@ -112,49 +59,34 @@
       "name": "Village - Square - Quest Board",
       "paragraphs": [
         "Here you see all the available quests in the village.",
-        "For the moment only unemployment seems available."
+        {
+          "text": "For the moment only unemployment seems available.",
+          "hideAny": [
+            "opened_village_quest_board_backside"
+          ]
+        },
+        {
+          "text": "The description from the barkeep seems true -- There seems to be something on the backside of the quest board.",
+          "showAny": [
+            "opened_village_quest_board_backside"
+          ]
+        }
       ],
       "actions": [
+        {
+          "text": "Inspect backside",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square_quest_board_backside"
+            }
+          ],
+          "showAny": [
+            "opened_village_quest_board_backside"
+          ]
+        },
         {
           "text": "Step back",
-          "triggers": [
-            {
-              "type": "movement",
-              "target": "village_square"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "village_shopping_district",
-      "name": "Village - Shopping District",
-      "paragraphs": [
-        "You enter the village. It looks quite nice!",
-        "If only you could do something here..."
-      ],
-      "actions": [
-        {
-          "text": "Back to Village Square",
-          "triggers": [
-            {
-              "type": "movement",
-              "target": "village_square"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "village_fishing_docks",
-      "name": "Village - Fishing Docks",
-      "paragraphs": [
-        "You enter the village. It looks quite nice!",
-        "If only you could do something here..."
-      ],
-      "actions": [
-        {
-          "text": "Go back to Village Square",
           "triggers": [
             {
               "type": "movement",
@@ -171,9 +103,9 @@
         "The first thing that strikes you is the noise. Fishermen know how to keep it lively.",
         "The tavern smells of good food and drinks - thankfully not too fishy.",
         {
-          "text": "> You talked to the barkeep. He recommend checking out the shopping district.",
+          "text": "> You talked to the barkeep. He recommend checking out the backside of the quest board for the secret quest.",
           "showAny": [
-            "opened_village_shopping_district"
+            "opened_village_quest_board_backside"
           ]
         }
       ],
@@ -187,7 +119,7 @@
             }
           ],
           "hideAny": [
-            "opened_village_shopping_district"
+            "opened_village_quest_board_backside"
           ]
         },
         {
@@ -202,38 +134,45 @@
       ]
     },
     {
-      "id": "village_majors_house",
-      "name": "Village - Major's House",
+      "id": "village_square_quest_board_backside",
+      "name": "Quest Board - Backside",
       "paragraphs": [
-        "You enter the village. It looks quite nice!",
-        "If only you could do something here..."
+        "Backside of the quest board."
       ],
       "actions": [
         {
-          "text": "Go back to Village Square",
+          "text": "Inspect the quest leaflet",
           "triggers": [
             {
               "type": "movement",
-              "target": "village_square"
+              "target": "quest_board_backside_quest"
+            }
+          ]
+        },
+        {
+          "text": "Go back",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square_quest_board"
             }
           ]
         }
       ]
     },
     {
-      "id": "village_orchards",
-      "name": "Village - Orchards",
+      "id": "quest_board_backside_quest",
+      "name": "Quest Board - Backside - Quest",
       "paragraphs": [
-        "You enter the village. It looks quite nice!",
-        "If only you could do something here..."
+        "A secret quest?"
       ],
       "actions": [
         {
-          "text": "Go back to Village Square",
+          "text": "Go back",
           "triggers": [
             {
               "type": "movement",
-              "target": "village_square"
+              "target": "village_square_quest_board_backside"
             }
           ]
         }
