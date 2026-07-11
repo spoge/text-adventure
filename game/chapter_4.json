@@ -115,7 +115,7 @@
           "triggers": [
             {
               "type": "add_flag",
-              "target": "opened_village_shopping_district"
+              "target": "opened_village_quest_board_backside"
             }
           ],
           "hideAny": [
