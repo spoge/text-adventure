@@ -46,6 +46,30 @@
           ]
         },
         {
+          "text": "Go to the Village Shop",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_shop_1"
+            }
+          ],
+          "showAny": [
+            "opened_village_shop"
+          ]
+        },
+        {
+          "text": "Go to the Village Docks",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_dock_1"
+            }
+          ],
+          "showAny": [
+            "village_dock_opened"
+          ]
+        },
+        {
           "text": "Go to Orchards by the High Roads",
           "showAny": [
             "opened_village_orchard"
@@ -103,15 +127,21 @@
         "The first thing that strikes you is the noise. Fishermen know how to keep it lively.",
         "The tavern smells of good food and drinks - thankfully not too fishy.",
         {
-          "text": "> You talked to the barkeep. He recommend checking out the backside of the quest board for the secret quest.",
+          "text": "> You ask the barkeep about any quests. He recommend checking out the backside of the quest board for the... unusual quests.",
           "showAny": [
             "opened_village_quest_board_backside"
+          ]
+        },
+        {
+          "text": "> You ask the barkeep about shops for perusing any goods. He tips you about the village shop not far from the village square.",
+          "showAny": [
+            "opened_village_shop"
           ]
         }
       ],
       "actions": [
         {
-          "text": "Talk to the barkeep",
+          "text": "Ask barkeep about quests",
           "triggers": [
             {
               "type": "add_flag",
@@ -120,6 +150,18 @@
           ],
           "hideAny": [
             "opened_village_quest_board_backside"
+          ]
+        },
+        {
+          "text": "Ask barkeep about shops",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "opened_village_shop"
+            }
+          ],
+          "hideAny": [
+            "opened_village_shop"
           ]
         },
         {
@@ -137,12 +179,55 @@
       "id": "village_square_quest_board_backside",
       "name": "Quest Board - Backside",
       "paragraphs": [
-        "Backside of the quest board."
+        "The backside of the quest board. \n\nA note hangs there.",
+        {
+          "text": "> You touch the backside. It is greasy and slimy. Ew, why did you do that? Now your fingers smells like week old fish.",
+          "showAny": [
+            "village_square_quest_board_backside_touched_it"
+          ]
+        },
+        {
+          "text": "> You transferred most of the greasiness and sliminess onto the note. Even the village cat would find the fishy smell revolting.",
+          "showAny": [
+            "village_square_quest_board_backside_wiped_fingers"
+          ]
+        }
       ],
       "actions": [
         {
-          "text": "Inspect the quest leaflet",
+          "text": "Touch the backside",
           "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_square_quest_board_backside_touched_it"
+            }
+          ],
+          "hideAny": [
+            "village_square_quest_board_backside_touched_it"
+          ]
+        },
+        {
+          "text": "Wipe your fingers on the note",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_square_quest_board_backside_wiped_fingers"
+            }
+          ],
+          "showAny": [
+            "village_square_quest_board_backside_touched_it"
+          ],
+          "hideAny": [
+            "village_square_quest_board_backside_wiped_fingers"
+          ]
+        },
+        {
+          "text": "Inspect the note",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "quest_board_backside_quest_inspected_note"
+            },
             {
               "type": "movement",
               "target": "quest_board_backside_quest"
@@ -162,9 +247,9 @@
     },
     {
       "id": "quest_board_backside_quest",
-      "name": "Quest Board - Backside - Quest",
+      "name": "Quest Board - Backside - Note",
       "paragraphs": [
-        "A secret quest?"
+        "\"Talk to me for some extra coins.\"\n\n\"Oh by the way, very legal. Yes very.\"\n\n\"By the way by the way, this is the shop keeper.\""
       ],
       "actions": [
         {
@@ -173,6 +258,171 @@
             {
               "type": "movement",
               "target": "village_square_quest_board_backside"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "village_shop_1",
+      "name": "Village - Shop",
+      "paragraphs": [
+        "\"How are ya?\", the shopkeeper says. \"Looking a bit... wet.\"\n\n\"Anyway, look at my wares!\" He points at an assortment of different goods.",
+        {
+          "text": "> You look at the wares. There isn't anything worth anything here. Maybe try your luck at a later time?",
+          "showAny": [
+            "village_shopkeeper_looked_at_wares"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "text": "Take a look",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_shopkeeper_looked_at_wares"
+            }
+          ],
+          "hideAny": [
+            "village_shopkeeper_looked_at_wares"
+          ]
+        },
+        {
+          "text": "Ask about the note",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_shop_2"
+            }
+          ],
+          "showAny": [
+            "quest_board_backside_quest_inspected_note"
+          ]
+        },
+        {
+          "text": "Go back",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square",
+              "chapterId": "chapter_4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "village_shop_2",
+      "name": "Village - Shop - Secret Quest",
+      "paragraphs": [
+        "\"Oooh, askin' about the secret quest, are ya? Well, ya seem like a decent fellow. Let's see if ya're up'n'to the task.\"\n\nHe reaches down. A small package is presents itself to you on the vendors table.\n\n\"Ya agree to the job?\"",
+        {
+          "text": "> You try to take the package. He slaps your wrist.\n\n\"Wait now, ya daft head!\"",
+          "showAny": [
+            "village_shop_took_package_too_early"
+          ]
+        },
+        {
+          "text": "> You nod to the shop keeper, taking the secret quest.\n\n\"Good lad.\"",
+          "showAny": [
+            "village_shop_took_quest"
+          ],
+          "hideAny": [
+            "village_shop_took_package_too_early"
+          ]
+        },
+        {
+          "text": "> You reluctantly agree to the job. The shop keeper looks suspiciously at you.",
+          "showAll": [
+            "village_shop_took_quest",
+            "village_shop_took_package_too_early"
+          ]
+        },
+        {
+          "text": "\"Take this one to the dock master.\" He looks you in the eye. \"Remember this! This is very important. Tell him this is from Albert the 4th of the Vicount's 9th son! Veeery important you remember that.\"",
+          "showAny": [
+            "village_shop_took_quest"
+          ]
+        },
+        {
+          "text": "> You take the package.\n\nHe pats your back. \"Now get!\"",
+          "showAny": [
+            "village_shop_took_package"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "text": "Take package",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_shop_took_package_too_early"
+            }
+          ],
+          "hideAny": [
+            "village_shop_took_package",
+            "village_shop_took_quest",
+            "village_shop_took_package_too_early"
+          ]
+        },
+        {
+          "text": "Agree to the job",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_shop_took_quest"
+            }
+          ],
+          "hideAny": [
+            "village_shop_took_quest"
+          ]
+        },
+        {
+          "text": "Take package",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_shop_took_package"
+            },
+            {
+              "type": "add_flag",
+              "target": "village_dock_opened"
+            }
+          ],
+          "hideAny": [
+            "village_shop_took_package"
+          ],
+          "showAny": [
+            "village_shop_took_quest"
+          ]
+        },
+        {
+          "text": "Go back",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square",
+              "chapterId": "chapter_4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "village_dock_1",
+      "name": "Village - Dock",
+      "paragraphs": [
+        "The grand docks of the Village. It fits two ships. Two very small fishing ships. Like row boat small."
+      ],
+      "actions": [
+        {
+          "text": "Go to Village Square",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square"
             }
           ]
         }

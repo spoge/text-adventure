@@ -10,13 +10,13 @@ const graphMinZoom = 0.35;
 const graphMaxZoom = 2;
 const graphPanPadding = 300;
 const graphLayoutPadding = 90;
-const graphDirectedNodeSep = 90;
-const graphDirectedRankSep = 190;
+const graphDirectedNodeSep = 70;
+const graphDirectedRankSep = 150;
 const graphDirectedEdgeSep = 50;
 const graphNodeWidth = 150;
 const graphOrganicNodeRepulsion = 14000;
-const graphOrganicIdealEdgeLength = 230;
-const graphOrganicNodeOverlap = 30;
+const graphOrganicIdealEdgeLength = 280;
+const graphOrganicNodeOverlap = 70;
 const startChapterId = "-start-";
 
 const state = {
@@ -37,9 +37,12 @@ const state = {
   pendingGraphNavigation: null,
   chapterReferences: { references: [] },
   safeDeletion: true,
+  sceneClipboard: null,
+  contextMenu: null,
+  pendingScrollRowKey: "",
   editorView: {
-    singleLine: false,
-    singleLineFullText: false,
+    singleLine: true,
+    singleLineFullText: true,
     collapsedGroups: {},
     expandedRows: {},
   },
@@ -186,6 +189,8 @@ const formatFlags = (value) => (Array.isArray(value) ? value.join(", ") : "");
 const sceneById = (sceneId) =>
   state.chapter?.scenes?.find((scene) => scene.id === sceneId);
 
+const deepClone = (value) => JSON.parse(JSON.stringify(value));
+
 const uniqueSceneId = () => {
   let index = state.chapter.scenes.length + 1;
   let sceneId = `scene_${index}`;
@@ -218,6 +223,32 @@ const renderChapterIdDatalist = () => {
 
 const chapterMetaById = (chapterId) =>
   state.chapters.find((chapter) => chapter.id === chapterId);
+
+const movementTargetScenes = (trigger) => {
+  const chapterId = trigger.chapterId?.trim();
+  if (!chapterId || chapterId === state.chapterId) return state.chapter?.scenes || [];
+  return chapterMetaById(chapterId)?.scenes || [];
+};
+
+const movementTargetDatalistId = (scene, actionIndex, triggerIndex) =>
+  `movementTargets-${scene.id}-${actionIndex}-${triggerIndex}`.replace(/[^-\w]/g, "_");
+
+const fillMovementTargetDatalist = (datalist, trigger) => {
+  datalist.innerHTML = "";
+  movementTargetScenes(trigger).forEach((scene) => {
+    const option = document.createElement("option");
+    option.value = scene.id;
+    option.label = scene.name ? `${scene.id} - ${scene.name}` : scene.id;
+    datalist.appendChild(option);
+  });
+};
+
+const movementTargetDatalist = (id, trigger) => {
+  const datalist = document.createElement("datalist");
+  datalist.id = id;
+  fillMovementTargetDatalist(datalist, trigger);
+  return datalist;
+};
 
 const renderStartSceneIdDatalist = () => {
   startSceneIdsEl.innerHTML = "";
@@ -502,9 +533,9 @@ const resolvedGraphLayoutMode = () => {
   const { width } = graphContainerSize();
   const estimatedHorizontalWidth = nodeCount * graphNodeWidth + Math.max(0, nodeCount - 1) * graphDirectedRankSep;
   if (chainLike && width > 0 && estimatedHorizontalWidth > width * 1.15) {
-    return { type: "directed", rankDir: "TB" };
+    return { type: "directed", rankDir: "TB", compact: true };
   }
-  return { type: "directed", rankDir: "LR" };
+  return { type: "directed", rankDir: "LR", compact: chainLike };
 };
 
 const ensureGraphLayoutExtensions = () => {
@@ -522,11 +553,11 @@ const graphLayoutOptions = () => {
       directed: true,
       edgeSep: graphDirectedEdgeSep,
       fit: false,
-      nodeSep: graphDirectedNodeSep,
+      nodeSep: mode.compact ? 45 : graphDirectedNodeSep,
       padding: graphLayoutPadding,
       rankDir: mode.rankDir || "LR",
-      rankSep: graphDirectedRankSep,
-      spacingFactor: 1.35,
+      rankSep: mode.compact ? 105 : graphDirectedRankSep,
+      spacingFactor: mode.compact ? 1.08 : 1.25,
     },
     organic: {
       name: "cose",
@@ -537,6 +568,7 @@ const graphLayoutOptions = () => {
       nodeOverlap: graphOrganicNodeOverlap,
       nodeRepulsion: graphOrganicNodeRepulsion,
       padding: graphLayoutPadding,
+      spacingFactor: 1.25,
     },
     grid: {
       name: "grid",
@@ -546,6 +578,110 @@ const graphLayoutOptions = () => {
       padding: graphLayoutPadding,
     },
   }[mode.type]);
+};
+
+const localEdgeParts = (edgeId) => {
+  const match = /^edge:(.*):(\d+):(\d+)$/.exec(edgeId);
+  if (!match) return null;
+  return {
+    sceneId: match[1],
+    actionIndex: Number(match[2]),
+    triggerIndex: Number(match[3]),
+  };
+};
+
+const selectSceneInEditor = (sceneId) => {
+  if (!sceneById(sceneId)) return;
+  state.selectedSceneId = sceneId;
+  state.pendingPreviewMovement = null;
+  clearExpandedRows();
+  renderEditor();
+  renderGraph();
+};
+
+const openEdgeTrigger = (edgeId) => {
+  const parts = localEdgeParts(edgeId);
+  if (!parts) return;
+  state.selectedSceneId = parts.sceneId;
+  clearExpandedRows();
+  expandNewRow(sceneById(parts.sceneId), "action", parts.actionIndex);
+  expandNewRow(sceneById(parts.sceneId), "trigger", parts.actionIndex, parts.triggerIndex);
+  state.pendingScrollRowKey = rowKey(sceneById(parts.sceneId), "trigger", parts.actionIndex, parts.triggerIndex);
+  renderEditor();
+  renderGraph();
+};
+
+const deleteEdgeTrigger = (edgeId) => {
+  const parts = localEdgeParts(edgeId);
+  if (!parts) return;
+  const scene = sceneById(parts.sceneId);
+  const action = scene?.actions?.[parts.actionIndex];
+  const trigger = action?.triggers?.[parts.triggerIndex];
+  if (!scene || !action || !trigger) return;
+  const extra = `\n\nThis removes movement to ${trigger.chapterId ? `${trigger.chapterId}/` : ""}${trigger.target || "missing target"}.`;
+  if (!confirmDeletion(`trigger ${parts.triggerIndex + 1} in action ${parts.actionIndex + 1}`, [], extra)) return;
+  recordHistory();
+  action.triggers.splice(parts.triggerIndex, 1);
+  markDirty();
+  renderEditor();
+  renderGraph();
+};
+
+const openEdgeTarget = async (edge) => {
+  const parts = localEdgeParts(edge.id());
+  if (!parts) return;
+  const scene = sceneById(parts.sceneId);
+  const trigger = scene?.actions?.[parts.actionIndex]?.triggers?.[parts.triggerIndex];
+  if (!trigger) return;
+  if (trigger.chapterId && trigger.chapterId !== state.chapterId) {
+    if (state.dirty) {
+      setStatus(`Save before opening ${trigger.chapterId} / ${trigger.target}.`, "error");
+      return;
+    }
+    await loadChapter(trigger.chapterId, trigger.target);
+    chapterSelect.value = trigger.chapterId;
+    return;
+  }
+  selectSceneInEditor(trigger.target);
+};
+
+const showNodeContextMenu = (event) => {
+  const data = event.target.data();
+  const scene = sceneById(event.target.id());
+  if (!scene) {
+    showContextMenu(event, [
+      { label: "Open Target", disabled: !data.navigationKind, onClick: () => openGraphNavigation(data) },
+      { label: "Fit Graph", onClick: fitGraph },
+      { label: "Relayout Graph", onClick: () => renderGraph({ relayout: true }) },
+    ]);
+    return;
+  }
+
+  showContextMenu(event, [
+    { label: "Open Scene", onClick: () => selectSceneInEditor(scene.id) },
+    { label: "Copy Scene", onClick: () => copyScene(scene) },
+    { label: "Move Scene...", onClick: () => moveScene(scene) },
+    { label: "Paste Scene", disabled: !state.sceneClipboard, onClick: pasteScene },
+    { label: "Delete Scene", danger: true, onClick: () => deleteScene(scene) },
+  ]);
+};
+
+const showEdgeContextMenu = (event) => {
+  const isLocalMovement = Boolean(localEdgeParts(event.target.id()));
+  showContextMenu(event, [
+    { label: "Edit Trigger", disabled: !isLocalMovement, onClick: () => openEdgeTrigger(event.target.id()) },
+    { label: "Open Target", disabled: !isLocalMovement, onClick: () => openEdgeTarget(event.target) },
+    { label: "Delete Trigger", disabled: !isLocalMovement, danger: true, onClick: () => deleteEdgeTrigger(event.target.id()) },
+  ]);
+};
+
+const showGraphContextMenu = (event) => {
+  showContextMenu(event, [
+    { label: "Add Scene", disabled: !state.chapter?.scenes, onClick: addScene },
+    { label: "Paste Scene", disabled: !state.chapter?.scenes || !state.sceneClipboard, onClick: pasteScene },
+    { label: "Fit Graph", onClick: fitGraph },
+    { label: "Relayout Graph", onClick: () => renderGraph({ relayout: true }) },
+  ]);
 };
 
 const sameGraphNavigation = (data) =>
@@ -661,8 +797,12 @@ const renderGraph = ({ relayout = false } = {}) => {
         {
           selector: "node:selected",
           style: {
-            "border-color": "#ffffff",
-            "border-width": 3,
+            "background-color": "#1d3b2a",
+            "border-color": "#5bf870",
+            "border-width": 5,
+            "shadow-blur": 18,
+            "shadow-color": "#5bf870",
+            "shadow-opacity": 0.55,
           },
         },
         {
@@ -703,6 +843,7 @@ const renderGraph = ({ relayout = false } = {}) => {
     });
 
     state.graph.on("tap", "node", (event) => {
+      hideContextMenu();
       const data = event.target.data();
       if (data.navigationKind) {
         openGraphNavigation(data);
@@ -712,6 +853,20 @@ const renderGraph = ({ relayout = false } = {}) => {
       state.pendingPreviewMovement = null;
       state.selectedSceneId = event.target.id();
       renderEditor();
+    });
+    state.graph.on("tap", hideContextMenu);
+    state.graph.on("cxttap", "node", (event) => {
+      event.originalEvent?.preventDefault();
+      showNodeContextMenu(event);
+    });
+    state.graph.on("cxttap", "edge", (event) => {
+      event.originalEvent?.preventDefault();
+      showEdgeContextMenu(event);
+    });
+    state.graph.on("cxttap", (event) => {
+      if (event.target !== state.graph) return;
+      event.originalEvent?.preventDefault();
+      showGraphContextMenu(event);
     });
     state.graph.on("pan zoom", clampGraphPan);
   } else {
@@ -776,6 +931,14 @@ const restoreDeletedChapter = async (entry) => {
   });
 };
 
+const restoreEntries = async (entries) => {
+  await api("/api/entries/restore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ entries }),
+  });
+};
+
 const applyHistoryOperation = async (entry, targetStack, direction) => {
   if (!entry || typeof entry === "string") {
     restoreChapterSnapshot(entry, targetStack);
@@ -817,6 +980,18 @@ const applyHistoryOperation = async (entry, targetStack, direction) => {
     await loadChapter(entry.chapterId);
     targetStack.push(entry);
     setStatus(`Restored chapter ${entry.chapterId}`, "saved");
+    return;
+  }
+
+  if (entry.type === "move_scene") {
+    await restoreEntries(direction === "undo" ? entry.affectedEntries : entry.updatedEntries);
+    await loadChapters();
+    const chapterId = direction === "undo" ? entry.fromChapterId : entry.toChapterId;
+    const sceneId = direction === "undo" ? entry.sceneId : entry.newSceneId;
+    chapterSelect.value = chapterId;
+    await loadChapter(chapterId, sceneId);
+    targetStack.push(entry);
+    setStatus(`${direction === "undo" ? "Undid" : "Redid"} move scene ${entry.sceneId}`, "saved");
   }
 };
 
@@ -876,6 +1051,19 @@ const clearExpandedRows = () => {
 
 const expandNewRow = (scene, type, index, childIndex) => {
   state.editorView.expandedRows[rowKey(scene, type, index, childIndex)] = true;
+};
+
+const scrollPendingRowIntoView = () => {
+  if (!state.pendingScrollRowKey) return;
+  requestAnimationFrame(() => {
+    const row = editorEl.querySelector(`[data-row-key="${CSS.escape(state.pendingScrollRowKey)}"]`);
+    if (!row) return;
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    window.setTimeout(() => {
+      row.classList.remove("highlight-row");
+      if (state.pendingScrollRowKey === row.dataset.rowKey) state.pendingScrollRowKey = "";
+    }, 1600);
+  });
 };
 
 const previewText = (value, fallback = "Untitled") => {
@@ -1297,6 +1485,198 @@ const button = (label, onClick, className = "") => {
   return el;
 };
 
+const hideContextMenu = () => {
+  state.contextMenu?.remove();
+  state.contextMenu = null;
+};
+
+const showContextMenu = (event, items) => {
+  hideContextMenu();
+  const menu = document.createElement("div");
+  menu.className = "context-menu";
+  items.forEach((item) => {
+    const menuButton = button(item.label, async () => {
+      hideContextMenu();
+      await item.onClick?.();
+    }, item.danger ? "danger" : "");
+    menuButton.disabled = Boolean(item.disabled);
+    menu.appendChild(menuButton);
+  });
+  document.body.appendChild(menu);
+  const sourceEvent = event.originalEvent || event;
+  const x = sourceEvent.clientX || 0;
+  const y = sourceEvent.clientY || 0;
+  const bounds = menu.getBoundingClientRect();
+  menu.style.left = `${Math.min(x, window.innerWidth - bounds.width - 8)}px`;
+  menu.style.top = `${Math.min(y, window.innerHeight - bounds.height - 8)}px`;
+  state.contextMenu = menu;
+};
+
+const copyScene = (scene) => {
+  state.sceneClipboard = {
+    chapterId: state.chapterId,
+    sceneId: scene.id,
+    scene: deepClone(scene),
+  };
+  setStatus(`Copied scene ${scene.id}`, "saved");
+};
+
+const uniquePastedSceneId = (baseId) => {
+  if (!sceneById(baseId)) return baseId;
+  let index = 2;
+  let sceneId = `${baseId}_copy`;
+  while (sceneById(sceneId)) {
+    sceneId = `${baseId}_copy_${index}`;
+    index += 1;
+  }
+  return sceneId;
+};
+
+const uniqueSceneIdInChapterMeta = (chapter, baseId) => {
+  const sceneIds = new Set((chapter?.scenes || []).map((scene) => scene.id));
+  if (!sceneIds.has(baseId)) return baseId;
+  let index = 2;
+  let sceneId = `${baseId}_copy`;
+  while (sceneIds.has(sceneId)) {
+    sceneId = `${baseId}_copy_${index}`;
+    index += 1;
+  }
+  return sceneId;
+};
+
+const adjustPastedSceneReferences = (scene, sourceChapterId, originalSceneId) => {
+  if (!sourceChapterId || sourceChapterId === state.chapterId) return;
+  (scene.actions || []).forEach((action) => {
+    (action.triggers || []).forEach((trigger) => {
+      if (trigger.type !== "movement" || !trigger.target || trigger.chapterId) return;
+      if (trigger.target === originalSceneId) {
+        trigger.target = scene.id;
+        return;
+      }
+      if (!sceneById(trigger.target)) trigger.chapterId = sourceChapterId;
+    });
+  });
+};
+
+const pasteScene = () => {
+  if (!state.chapter?.scenes || !state.sceneClipboard) return;
+  const scene = deepClone(state.sceneClipboard.scene);
+  const originalSceneId = scene.id;
+  const nextId = uniquePastedSceneId(scene.id);
+  if (nextId !== scene.id) {
+    const customId = prompt("Scene id already exists. New scene id", nextId);
+    if (!customId) return;
+    scene.id = customId.trim();
+  }
+  if (sceneById(scene.id)) {
+    alert(`Scene id already exists: ${scene.id}`);
+    return;
+  }
+  adjustPastedSceneReferences(scene, state.sceneClipboard.chapterId, originalSceneId);
+  recordHistory();
+  state.chapter.scenes.push(scene);
+  state.selectedSceneId = scene.id;
+  markDirty();
+  renderEditor();
+  renderGraph({ relayout: true });
+};
+
+const addScene = () => {
+  if (!state.chapter?.scenes) return;
+  recordHistory();
+  const scene = {
+    id: uniqueSceneId(),
+    name: "New Scene",
+    paragraphs: [""],
+    actions: [],
+  };
+  state.chapter.scenes.push(scene);
+  state.selectedSceneId = scene.id;
+  markDirty();
+  renderEditor();
+  renderGraph({ relayout: true });
+};
+
+const deleteScene = async (scene) => {
+  try {
+    const result = await api(`/api/chapters/${state.chapterId}/scenes/${scene.id}/references`);
+    const references = result.references || [];
+    if (!confirmDeletion(`scene ${state.chapterId}/${scene.id}`, references)) return;
+    recordHistory();
+    state.chapter.scenes.forEach((item) => {
+      (item.actions || []).forEach((action) => {
+        action.triggers = (action.triggers || []).filter(
+          (trigger) =>
+            !(trigger.type === "movement" && trigger.chapterId === undefined && trigger.target === scene.id)
+        );
+      });
+    });
+    state.chapter.scenes = state.chapter.scenes.filter((item) => item !== scene);
+    state.selectedSceneId = state.chapter.scenes[0]?.id || "";
+    markDirty();
+    renderEditor();
+    renderGraph({ relayout: true });
+  } catch (error) {
+    setStatus(error.message, "error");
+    alert(error.message);
+  }
+};
+
+const moveScene = async (scene) => {
+  if (state.dirty && !confirm("Discard unsaved changes before moving this scene?")) return;
+  const chapterChoices = state.chapters
+    .filter((chapter) => chapter.hasScenes && chapter.id !== state.chapterId)
+    .map((chapter) => chapter.id)
+    .join(", ");
+  const toChapterId = prompt(`Move scene to chapter id${chapterChoices ? ` (${chapterChoices})` : ""}`, "");
+  if (!toChapterId) return;
+  const targetChapter = chapterMetaById(toChapterId.trim());
+  if (!targetChapter?.hasScenes) {
+    alert(`Chapter not found: ${toChapterId.trim()}`);
+    return;
+  }
+
+  let newSceneId = scene.id;
+  if ((targetChapter.scenes || []).some((item) => item.id === newSceneId)) {
+    newSceneId = uniqueSceneIdInChapterMeta(targetChapter, scene.id);
+    const customId = prompt("Destination scene id", newSceneId);
+    if (!customId) return;
+    newSceneId = customId.trim();
+  }
+  if (!newSceneId) return;
+
+  try {
+    const result = await api("/api/scenes/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fromChapterId: state.chapterId,
+        sceneId: scene.id,
+        toChapterId: toChapterId.trim(),
+        newSceneId,
+      }),
+    });
+    state.undoStack.push({
+      type: "move_scene",
+      fromChapterId: result.fromChapterId,
+      toChapterId: result.toChapterId,
+      sceneId: result.sceneId,
+      newSceneId: result.newSceneId,
+      affectedEntries: result.affectedEntries || [],
+      updatedEntries: result.updatedEntries || [],
+    });
+    state.redoStack = [];
+    await loadChapters();
+    chapterSelect.value = result.toChapterId;
+    await loadChapter(result.toChapterId, result.newSceneId);
+    updateHistoryButtons();
+    setStatus(`Moved scene ${scene.id} to ${result.toChapterId}/${result.newSceneId}`, "saved");
+  } catch (error) {
+    setStatus(error.message, "error");
+    alert(error.message);
+  }
+};
+
 const renderVisibilityFields = (container, obj) => {
   const grid = document.createElement("div");
   grid.className = "visibility-grid";
@@ -1407,16 +1787,23 @@ const renderParagraph = (scene, paragraph, index) => {
 };
 
 const renderTrigger = (scene, action, actionIndex, trigger, index) => {
+  const triggerRowKey = rowKey(scene, "trigger", actionIndex, index);
   if (state.editorView.singleLine && !isRowExpanded(scene, "trigger", actionIndex, index)) {
-    return compactRow(
+    const row = compactRow(
       `${index + 1}. ${triggerSummary(trigger)}`,
       [],
       () => setRowExpanded(scene, "trigger", actionIndex, index, true)
     );
+    row.dataset.rowKey = triggerRowKey;
+    if (state.pendingScrollRowKey === triggerRowKey) row.classList.add("highlight-row");
+    return row;
   }
 
   const card = document.createElement("div");
   card.className = "card";
+  card.dataset.rowKey = triggerRowKey;
+  if (state.pendingScrollRowKey === triggerRowKey) card.classList.add("highlight-row");
+  let targetDatalist = null;
 
   const typeSelect = document.createElement("select");
   typeSelect.innerHTML = ["movement", "add_flag", "remove_flag", "remove_all_flags"]
@@ -1442,13 +1829,20 @@ const renderTrigger = (scene, action, actionIndex, trigger, index) => {
   card.appendChild(typeWrapper);
 
   if (trigger.type !== "remove_all_flags") {
+    const targetDatalistId = trigger.type === "movement"
+      ? movementTargetDatalistId(scene, actionIndex, index)
+      : "";
     card.appendChild(
       field("Target", trigger.target, (value) => {
         trigger.target = value;
         markDirty();
         renderGraph();
-      }, trigger.type === "movement" ? { list: "sceneIds" } : {})
+      }, trigger.type === "movement" ? { list: targetDatalistId } : {})
     );
+    if (trigger.type === "movement") {
+      targetDatalist = movementTargetDatalist(targetDatalistId, trigger);
+      card.appendChild(targetDatalist);
+    }
   }
 
   if (trigger.type === "movement") {
@@ -1457,8 +1851,9 @@ const renderTrigger = (scene, action, actionIndex, trigger, index) => {
         if (value.trim()) trigger.chapterId = value.trim();
         else delete trigger.chapterId;
         markDirty();
+        if (targetDatalist) fillMovementTargetDatalist(targetDatalist, trigger);
         renderGraph();
-      })
+      }, { list: "chapterIds" })
     );
   }
 
@@ -1622,7 +2017,7 @@ const renderEditor = () => {
   const title = document.createElement("div");
   title.className = "section-header";
   const h2 = document.createElement("h2");
-  h2.textContent = "Scene";
+  h2.textContent = `Editing: ${scene.name || "Untitled"} / ${scene.id}`;
   title.append(
     h2,
     button(state.editorView.singleLine ? "Full cards" : "Single-line", () => {
@@ -1642,30 +2037,7 @@ const renderEditor = () => {
   title.append(
     button("Collapse all", () => collapseSceneGroups(scene), "small"),
     button("Expand all", () => expandSceneGroups(scene), "small"),
-    button("Delete Scene", async () => {
-      try {
-        const result = await api(`/api/chapters/${state.chapterId}/scenes/${scene.id}/references`);
-        const references = result.references || [];
-        if (!confirmDeletion(`scene ${state.chapterId}/${scene.id}`, references)) return;
-        recordHistory();
-        state.chapter.scenes.forEach((item) => {
-          (item.actions || []).forEach((action) => {
-            action.triggers = (action.triggers || []).filter(
-              (trigger) =>
-                !(trigger.type === "movement" && trigger.chapterId === undefined && trigger.target === scene.id)
-            );
-          });
-        });
-        state.chapter.scenes = state.chapter.scenes.filter((item) => item !== scene);
-        state.selectedSceneId = state.chapter.scenes[0]?.id || "";
-        markDirty();
-        renderEditor();
-        renderGraph({ relayout: true });
-      } catch (error) {
-        setStatus(error.message, "error");
-        alert(error.message);
-      }
-    }, "danger")
+    button("Delete Scene", () => deleteScene(scene), "danger")
   );
   editorEl.appendChild(title);
 
@@ -1762,6 +2134,7 @@ const renderEditor = () => {
   }
   editorEl.appendChild(actions);
   renderPreview();
+  scrollPendingRowIntoView();
 };
 
 const loadChapter = async (chapterId, selectedSceneId) => {
@@ -1935,21 +2308,7 @@ deleteChapterButton.addEventListener("click", async () => {
   }
 });
 
-addSceneButton.addEventListener("click", () => {
-  if (!state.chapter?.scenes) return;
-  recordHistory();
-  const scene = {
-    id: uniqueSceneId(),
-    name: "New Scene",
-    paragraphs: [""],
-    actions: [],
-  };
-  state.chapter.scenes.push(scene);
-  state.selectedSceneId = scene.id;
-  markDirty();
-  renderEditor();
-  renderGraph({ relayout: true });
-});
+addSceneButton.addEventListener("click", addScene);
 
 saveButton.addEventListener("click", async () => {
   if (!state.chapter || !state.chapterId) return;
@@ -1973,3 +2332,7 @@ loadChapters().catch((error) => {
 });
 
 window.addEventListener("resize", resizeGraph);
+window.addEventListener("click", hideContextMenu);
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") hideContextMenu();
+});

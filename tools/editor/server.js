@@ -30,6 +30,8 @@ const readJson = async (filePath) =>
 const writeJson = async (filePath, value) =>
   fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
 
+const cloneJson = (value) => JSON.parse(JSON.stringify(value));
+
 const fileExists = async (filePath) => {
   try {
     await fs.access(filePath);
@@ -402,6 +404,176 @@ app.post("/api/chapters/:chapterId/restore", async (req, res, next) => {
       })
     );
     await writeJson(chapterPath(chapterId), chapter);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/scenes/move", async (req, res, next) => {
+  try {
+    const fromChapterId = String(req.body?.fromChapterId || "").trim();
+    const toChapterId = String(req.body?.toChapterId || "").trim();
+    const sceneId = String(req.body?.sceneId || "").trim();
+    const newSceneId = String(req.body?.newSceneId || sceneId).trim();
+
+    if (!isValidChapterId(fromChapterId) || !isValidChapterId(toChapterId) || !sceneId || !newSceneId) {
+      res.status(400).json({ error: "Invalid scene move request" });
+      return;
+    }
+    if (fromChapterId === startChapterId || toChapterId === startChapterId) {
+      res.status(400).json({ error: "Cannot move scenes to or from start config" });
+      return;
+    }
+
+    const analysis = await analyzeGame();
+    const entriesById = new Map(analysis.entries.map((entry) => [entry.id, { ...entry, json: cloneJson(entry.json) }]));
+    const fromEntry = entriesById.get(fromChapterId);
+    const toEntry = entriesById.get(toChapterId);
+    if (!fromEntry?.json?.scenes || !toEntry?.json?.scenes) {
+      res.status(404).json({ error: "Source or destination chapter not found" });
+      return;
+    }
+
+    const sourceSceneIndex = fromEntry.json.scenes.findIndex((scene) => scene.id === sceneId);
+    if (sourceSceneIndex === -1) {
+      res.status(404).json({ error: "Source scene not found" });
+      return;
+    }
+    if (toEntry.json.scenes.some((scene) => scene.id === newSceneId)) {
+      res.status(409).json({ error: `Destination scene already exists: ${newSceneId}` });
+      return;
+    }
+
+    const originals = new Map();
+    const rememberOriginal = (entryId) => {
+      if (originals.has(entryId)) return;
+      const original = analysis.entries.find((entry) => entry.id === entryId);
+      if (original) originals.set(entryId, { id: entryId, json: cloneJson(original.json) });
+    };
+
+    rememberOriginal(fromChapterId);
+    rememberOriginal(toChapterId);
+    const movedScene = fromEntry.json.scenes.splice(sourceSceneIndex, 1)[0];
+    movedScene.id = newSceneId;
+
+    const targetHasScene = (targetChapterId, targetSceneId) =>
+      entriesById.get(targetChapterId)?.json?.scenes?.some((scene) => scene.id === targetSceneId);
+
+    const normalizeMovedSceneOutgoing = () => {
+      (movedScene.actions || []).forEach((action) => {
+        (action.triggers || []).forEach((trigger) => {
+          if (trigger?.type !== "movement" || !trigger.target) return;
+          if (!trigger.chapterId && trigger.target === sceneId) {
+            trigger.target = newSceneId;
+            return;
+          }
+          if (!trigger.chapterId) {
+            if (targetHasScene(toChapterId, trigger.target)) return;
+            trigger.chapterId = fromChapterId;
+          } else if (trigger.chapterId === toChapterId && targetHasScene(toChapterId, trigger.target)) {
+            delete trigger.chapterId;
+          }
+        });
+      });
+    };
+
+    normalizeMovedSceneOutgoing();
+    toEntry.json.scenes.push(movedScene);
+
+    const changedReferences = [];
+    entriesById.forEach((entry) => {
+      if (!entry.json?.scenes) return;
+      entry.json.scenes.forEach((scene) => {
+        (scene.actions || []).forEach((action, actionIndex) => {
+          (action.triggers || []).forEach((trigger, triggerIndex) => {
+            if (trigger?.type !== "movement" || trigger.target !== sceneId) return;
+            const targetChapterId = trigger.chapterId || entry.id;
+            if (targetChapterId !== fromChapterId) return;
+
+            rememberOriginal(entry.id);
+            changedReferences.push({
+              fromChapterId: entry.id,
+              fromSceneId: scene.id,
+              actionIndex,
+              triggerIndex,
+              actionText: action.text || "",
+              toChapterId,
+              toSceneId: newSceneId,
+            });
+            trigger.target = newSceneId;
+            if (entry.id === toChapterId) delete trigger.chapterId;
+            else trigger.chapterId = toChapterId;
+          });
+        });
+      });
+    });
+
+    const start = entriesById.get(startChapterId);
+    if (start?.json?.chapterId === fromChapterId && start.json.sceneId === sceneId) {
+      rememberOriginal(startChapterId);
+      start.json.chapterId = toChapterId;
+      start.json.sceneId = newSceneId;
+      changedReferences.push({
+        fromChapterId: startChapterId,
+        fromSceneId: "start",
+        actionIndex: null,
+        triggerIndex: null,
+        toChapterId,
+        toSceneId: newSceneId,
+        source: "start",
+      });
+    }
+
+    const affectedEntries = [...originals.values()];
+    await Promise.all(
+      affectedEntries.map(async (entry) => {
+        await writeJson(chapterPath(entry.id), entriesById.get(entry.id).json);
+      })
+    );
+
+    const updatedEntries = affectedEntries.map((entry) => ({
+      id: entry.id,
+      json: cloneJson(entriesById.get(entry.id).json),
+    }));
+
+    res.json({
+      ok: true,
+      affectedEntries,
+      updatedEntries,
+      changedReferences,
+      movedScene: cloneJson(movedScene),
+      fromChapterId,
+      toChapterId,
+      sceneId,
+      newSceneId,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/entries/restore", async (req, res, next) => {
+  try {
+    const entries = Array.isArray(req.body?.entries) ? req.body.entries : [];
+    if (entries.length === 0) {
+      res.status(400).json({ error: "No entries to restore" });
+      return;
+    }
+    await Promise.all(
+      entries.map(async (entry) => {
+        if (!isValidChapterId(entry?.id) || !entry?.json) return;
+        const errors = entry.id === startChapterId
+          ? validateStart(entry.json)
+          : validateChapter(entry.json);
+        if (errors.length > 0) {
+          const error = new Error(`Invalid restore entry ${entry.id}: ${errors.join(", ")}`);
+          error.status = 400;
+          throw error;
+        }
+        await writeJson(chapterPath(entry.id), entry.json);
+      })
+    );
     res.json({ ok: true });
   } catch (error) {
     next(error);

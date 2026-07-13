@@ -248,6 +248,12 @@ textarea {
   padding: 0.75rem;
 }
 
+.card.highlight-row,
+.compact-row.highlight-row {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(91, 248, 112, 0.22);
+}
+
 .card-actions {
   display: flex;
   flex-wrap: wrap;
@@ -441,6 +447,39 @@ textarea {
 
 .checkbox-row input {
   width: auto;
+}
+
+.context-menu {
+  background: #10141b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  display: grid;
+  gap: 0.15rem;
+  min-width: 12rem;
+  padding: 0.35rem;
+  position: fixed;
+  z-index: 20;
+}
+
+.context-menu[hidden] {
+  display: none;
+}
+
+.context-menu button {
+  border: 0;
+  border-radius: 5px;
+  justify-content: flex-start;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+}
+
+.context-menu button:hover {
+  background: var(--panel-2);
+}
+
+.context-menu .danger {
+  color: var(--danger);
 }
 
 @media (max-width: 900px) {
