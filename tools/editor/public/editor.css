@@ -108,6 +108,18 @@ textarea {
   min-width: 14rem;
 }
 
+.toolbar-checkbox {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.55rem;
+  text-transform: none;
+}
+
+.toolbar-checkbox input {
+  width: auto;
+}
+
 .status {
   color: var(--muted);
   margin-left: auto;

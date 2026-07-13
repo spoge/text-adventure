@@ -36,6 +36,7 @@ const state = {
   pendingPreviewMovement: null,
   pendingGraphNavigation: null,
   chapterReferences: { references: [] },
+  safeDeletion: true,
   editorView: {
     singleLine: false,
     singleLineFullText: false,
@@ -47,6 +48,7 @@ const state = {
 const chapterSelect = document.getElementById("chapterSelect");
 const addChapterButton = document.getElementById("addChapterButton");
 const deleteChapterButton = document.getElementById("deleteChapterButton");
+const safeDeletionCheckbox = document.getElementById("safeDeletionCheckbox");
 const addSceneButton = document.getElementById("addSceneButton");
 const graphLayoutSelect = document.getElementById("graphLayoutSelect");
 const fitGraphButton = document.getElementById("fitGraphButton");
@@ -109,6 +111,69 @@ const api = async (url, options) => {
   }
   return body;
 };
+
+const formatReference = (reference) => {
+  if (typeof reference === "string") return reference;
+  if (reference.source === "start" || reference.fromChapterId === startChapterId) {
+    return `${startChapterId} starts at ${reference.toChapterId}/${reference.toSceneId}`;
+  }
+  const action = reference.actionText ? `, action "${reference.actionText}"` : `, action ${reference.actionIndex + 1}`;
+  return `${reference.fromChapterId}/${reference.fromSceneId}${action}, trigger ${reference.triggerIndex + 1}`;
+};
+
+const referenceDetails = (deletedLabel, references) => {
+  if (references.length === 0) return "";
+  return [
+    `${deletedLabel} is referenced by:`,
+    ...references.map((reference) => `- ${formatReference(reference)}`),
+  ].join("\n");
+};
+
+const confirmDeletion = (deletedLabel, references, extra = "") => {
+  const details = referenceDetails(deletedLabel, references);
+  if (state.safeDeletion && references.length > 0) {
+    alert(`Cannot delete while Safe deletion is enabled.\n\n${details}`);
+    return false;
+  }
+  const warning = details ? `\n\n${details}` : "";
+  return confirm(`Delete ${deletedLabel}?${warning}${extra}`);
+};
+
+const addFlagReferences = (references, label, obj, flags) => {
+  visibilityFields.forEach((fieldName) => {
+    (obj?.[fieldName] || []).forEach((flag) => {
+      if (flags.has(flag)) references.push(`${label} uses flag "${flag}" in ${fieldName}`);
+    });
+  });
+};
+
+const flagReferences = (flags, ignoredObject) => {
+  const flagSet = new Set(flags.filter(Boolean));
+  if (flagSet.size === 0) return [];
+  const references = [];
+  (state.chapter?.scenes || []).forEach((scene) => {
+    (scene.paragraphs || []).forEach((paragraph, paragraphIndex) => {
+      if (paragraph === ignoredObject || typeof paragraph !== "object" || paragraph === null) return;
+      addFlagReferences(references, `${scene.id} paragraph ${paragraphIndex + 1}`, paragraph, flagSet);
+    });
+    (scene.actions || []).forEach((action, actionIndex) => {
+      if (action === ignoredObject) return;
+      addFlagReferences(references, `${scene.id} action ${actionIndex + 1}`, action, flagSet);
+      (action.triggers || []).forEach((trigger, triggerIndex) => {
+        if (trigger === ignoredObject) return;
+        if (["add_flag", "remove_flag"].includes(trigger.type) && flagSet.has(trigger.target)) {
+          references.push(`${scene.id} action ${actionIndex + 1} trigger ${triggerIndex + 1} ${trigger.type} "${trigger.target}"`);
+        }
+      });
+    });
+  });
+  return references;
+};
+
+const flagsChangedByTriggers = (triggers = []) =>
+  triggers
+    .filter((trigger) => ["add_flag", "remove_flag"].includes(trigger.type) && trigger.target)
+    .map((trigger) => trigger.target);
 
 const splitFlags = (value) =>
   value
@@ -690,14 +755,95 @@ const restoreChapterSnapshot = (snapshot, redoTarget) => {
   updateHistoryButtons();
 };
 
-const undo = () => {
-  const snapshot = state.undoStack.pop();
-  restoreChapterSnapshot(snapshot, state.redoStack);
+const deleteChapterForHistory = async (entry) => {
+  const references = (await api(`/api/chapters/${entry.chapterId}/references`)).references || [];
+  if (references.length > 0 && state.safeDeletion) {
+    alert(`Cannot delete chapter while Safe deletion is enabled.\n\n${referenceDetails(`Chapter ${entry.chapterId}`, references)}`);
+    return false;
+  }
+  if (references.length > 0 && !confirmDeletion(`chapter ${entry.chapterId}`, references)) {
+    return false;
+  }
+  await api(`/api/chapters/${entry.chapterId}`, { method: "DELETE" });
+  return true;
 };
 
-const redo = () => {
-  const snapshot = state.redoStack.pop();
-  restoreChapterSnapshot(snapshot, state.undoStack);
+const restoreDeletedChapter = async (entry) => {
+  await api(`/api/chapters/${entry.chapterId}/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chapter: entry.chapter, affectedEntries: entry.affectedEntries || [] }),
+  });
+};
+
+const applyHistoryOperation = async (entry, targetStack, direction) => {
+  if (!entry || typeof entry === "string") {
+    restoreChapterSnapshot(entry, targetStack);
+    return;
+  }
+
+  if (entry.type === "create_chapter") {
+    if (direction === "redo") {
+      await restoreDeletedChapter(entry);
+      await loadChapters();
+      chapterSelect.value = entry.chapterId;
+      await loadChapter(entry.chapterId);
+      targetStack.push(entry);
+      setStatus(`Redid create chapter ${entry.chapterId}`, "saved");
+      return;
+    }
+
+    const ok = await deleteChapterForHistory(entry);
+    if (!ok) return false;
+    await loadChapters();
+    targetStack.push(entry);
+    setStatus(`Undid create chapter ${entry.chapterId}`, "saved");
+    return;
+  }
+
+  if (entry.type === "delete_chapter") {
+    if (direction === "redo") {
+      const ok = await deleteChapterForHistory(entry);
+      if (!ok) return false;
+      await loadChapters();
+      targetStack.push(entry);
+      setStatus(`Redid delete chapter ${entry.chapterId}`, "saved");
+      return;
+    }
+
+    await restoreDeletedChapter(entry);
+    await loadChapters();
+    chapterSelect.value = entry.chapterId;
+    await loadChapter(entry.chapterId);
+    targetStack.push(entry);
+    setStatus(`Restored chapter ${entry.chapterId}`, "saved");
+  }
+};
+
+const undo = async () => {
+  const entry = state.undoStack.pop();
+  try {
+    const ok = await applyHistoryOperation(entry, state.redoStack, "undo");
+    if (ok === false && entry) state.undoStack.push(entry);
+  } catch (error) {
+    if (entry) state.undoStack.push(entry);
+    setStatus(error.message, "error");
+    alert(error.message);
+  }
+  updateHistoryButtons();
+};
+
+const redo = async () => {
+  const entry = state.redoStack.pop();
+  try {
+    const ok = await applyHistoryOperation(entry, state.undoStack, "redo");
+    if (ok === false && entry) state.redoStack.push(entry);
+  } catch (error) {
+    if (entry) state.redoStack.push(entry);
+    setStatus(error.message, "error");
+    alert(error.message);
+  }
+  updateHistoryButtons();
 };
 
 const groupKey = (scene, name) => `${scene.id}:group:${name}`;
@@ -1245,6 +1391,11 @@ const renderParagraph = (scene, paragraph, index) => {
     button("Up", () => moveArrayItem(scene.paragraphs, index, -1)),
     button("Down", () => moveArrayItem(scene.paragraphs, index, 1)),
     button("Remove", () => {
+      const visibility = visibilitySummary(paragraphObject);
+      const extra = visibility.length > 0
+        ? `\n\nThis paragraph has visibility rules: ${visibility.join("; ")}.`
+        : "";
+      if (!confirmDeletion(`paragraph ${index + 1} in ${scene.id}`, [], extra)) return;
       recordHistory();
       scene.paragraphs.splice(index, 1);
       markDirty();
@@ -1320,6 +1471,13 @@ const renderTrigger = (scene, action, actionIndex, trigger, index) => {
     button("Up", () => moveArrayItem(action.triggers, index, -1)),
     button("Down", () => moveArrayItem(action.triggers, index, 1)),
     button("Remove", () => {
+      const references = ["add_flag", "remove_flag"].includes(trigger.type)
+        ? flagReferences([trigger.target], trigger)
+        : [];
+      const extra = trigger.type === "movement"
+        ? `\n\nThis removes movement to ${trigger.chapterId ? `${trigger.chapterId}/` : ""}${trigger.target || "missing target"}.`
+        : "";
+      if (!confirmDeletion(`trigger ${index + 1} in action ${actionIndex + 1}`, references, extra)) return;
       recordHistory();
       action.triggers.splice(index, 1);
       markDirty();
@@ -1390,6 +1548,10 @@ const renderAction = (scene, action, index) => {
     button("Up", () => moveArrayItem(scene.actions, index, -1)),
     button("Down", () => moveArrayItem(scene.actions, index, 1)),
     button("Remove", () => {
+      const references = flagReferences(flagsChangedByTriggers(action.triggers), action);
+      const triggerDetails = (action.triggers || []).map(shortTriggerSummary).join("; ");
+      const extra = triggerDetails ? `\n\nThis action contains: ${triggerDetails}.` : "";
+      if (!confirmDeletion(`action ${index + 1} in ${scene.id}`, references, extra)) return;
       recordHistory();
       scene.actions.splice(index, 1);
       markDirty();
@@ -1480,32 +1642,29 @@ const renderEditor = () => {
   title.append(
     button("Collapse all", () => collapseSceneGroups(scene), "small"),
     button("Expand all", () => expandSceneGroups(scene), "small"),
-    button("Delete Scene", () => {
-      const references = state.chapter.scenes.flatMap((item) =>
-        (item.actions || []).flatMap((action, actionIndex) =>
-          (action.triggers || [])
-            .map((trigger, triggerIndex) => ({ item, action, actionIndex, trigger, triggerIndex }))
-            .filter(
-              ({ trigger }) =>
-                trigger.type === "movement" &&
-                trigger.chapterId === undefined &&
-                trigger.target === scene.id
-            )
-        )
-      );
-      const warning = references.length > 0
-        ? `\n\n${references.length} movement trigger(s) reference this scene and will be removed.`
-        : "";
-      if (!confirm(`Delete scene ${scene.id}?${warning}`)) return;
-      recordHistory();
-      references.forEach(({ action, trigger }) => {
-        action.triggers = (action.triggers || []).filter((item) => item !== trigger);
-      });
-      state.chapter.scenes = state.chapter.scenes.filter((item) => item !== scene);
-      state.selectedSceneId = state.chapter.scenes[0]?.id || "";
-      markDirty();
-      renderEditor();
-      renderGraph({ relayout: true });
+    button("Delete Scene", async () => {
+      try {
+        const result = await api(`/api/chapters/${state.chapterId}/scenes/${scene.id}/references`);
+        const references = result.references || [];
+        if (!confirmDeletion(`scene ${state.chapterId}/${scene.id}`, references)) return;
+        recordHistory();
+        state.chapter.scenes.forEach((item) => {
+          (item.actions || []).forEach((action) => {
+            action.triggers = (action.triggers || []).filter(
+              (trigger) =>
+                !(trigger.type === "movement" && trigger.chapterId === undefined && trigger.target === scene.id)
+            );
+          });
+        });
+        state.chapter.scenes = state.chapter.scenes.filter((item) => item !== scene);
+        state.selectedSceneId = state.chapter.scenes[0]?.id || "";
+        markDirty();
+        renderEditor();
+        renderGraph({ relayout: true });
+      } catch (error) {
+        setStatus(error.message, "error");
+        alert(error.message);
+      }
     }, "danger")
   );
   editorEl.appendChild(title);
@@ -1674,6 +1833,10 @@ graphLayoutSelect.addEventListener("change", () => {
   renderGraph({ relayout: true });
 });
 
+safeDeletionCheckbox.addEventListener("change", () => {
+  state.safeDeletion = safeDeletionCheckbox.checked;
+});
+
 fitGraphButton.addEventListener("click", fitGraph);
 undoButton.addEventListener("click", undo);
 redoButton.addEventListener("click", redo);
@@ -1731,6 +1894,14 @@ addChapterButton.addEventListener("click", async () => {
     await loadChapters();
     chapterSelect.value = chapterId.trim();
     await loadChapter(chapterId.trim());
+    state.undoStack.push({
+      type: "create_chapter",
+      chapterId: chapterId.trim(),
+      chapter: JSON.parse(chapterSnapshot()),
+      affectedEntries: [],
+    });
+    state.redoStack = [];
+    updateHistoryButtons();
   } catch (error) {
     setStatus(error.message, "error");
     alert(error.message);
@@ -1746,17 +1917,18 @@ deleteChapterButton.addEventListener("click", async () => {
   try {
     const result = await api(`/api/chapters/${state.chapterId}/references`);
     const references = result.references || [];
-    const examples = references
-      .slice(0, 5)
-      .map((reference) => `${reference.fromChapterId}/${reference.fromSceneId}`)
-      .join(", ");
-    const more = references.length > 5 ? `, and ${references.length - 5} more` : "";
-    const warning = references.length > 0
-      ? `\n\n${references.length} reference(s) point to this chapter from ${examples}${more}. Movement triggers will be removed automatically; start config will be repointed if needed.`
-      : "";
-    if (!confirm(`Delete chapter ${state.chapterId}?${warning}`)) return;
-    await api(`/api/chapters/${state.chapterId}`, { method: "DELETE" });
+    if (!confirmDeletion(`chapter ${state.chapterId}`, references, "\n\nMovement triggers pointing to this chapter will be removed automatically; start config will be repointed if needed.")) return;
+    const chapterId = state.chapterId;
+    const deleteResult = await api(`/api/chapters/${chapterId}`, { method: "DELETE" });
     await loadChapters();
+    state.undoStack.push({
+      type: "delete_chapter",
+      chapterId,
+      chapter: deleteResult.deletedChapter,
+      affectedEntries: deleteResult.affectedEntries || [],
+    });
+    state.redoStack = [];
+    updateHistoryButtons();
   } catch (error) {
     setStatus(error.message, "error");
     alert(error.message);

@@ -298,7 +298,16 @@ const analyzeGame = async () => {
 
 const referencesForChapter = async (chapterId) => {
   const analysis = await analyzeGame();
-  return analysis.references.filter((reference) => reference.toChapterId === chapterId);
+  return analysis.references.filter(
+    (reference) => reference.toChapterId === chapterId && reference.fromChapterId !== chapterId
+  );
+};
+
+const referencesForScene = async (chapterId, sceneId) => {
+  const analysis = await analyzeGame();
+  return analysis.references.filter(
+    (reference) => reference.toChapterId === chapterId && reference.toSceneId === sceneId
+  );
 };
 
 app.get("/api/chapters", async (_req, res, next) => {
@@ -363,6 +372,42 @@ app.get("/api/chapters/:chapterId/references", async (req, res, next) => {
   }
 });
 
+app.get("/api/chapters/:chapterId/scenes/:sceneId/references", async (req, res, next) => {
+  try {
+    res.json({ references: await referencesForScene(req.params.chapterId, req.params.sceneId) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/chapters/:chapterId/restore", async (req, res, next) => {
+  try {
+    const chapterId = req.params.chapterId;
+    if (chapterId === startChapterId) {
+      res.status(400).json({ error: "Cannot restore over start config" });
+      return;
+    }
+    const chapter = req.body?.chapter;
+    const affectedEntries = Array.isArray(req.body?.affectedEntries) ? req.body.affectedEntries : [];
+    const errors = validateChapter(chapter);
+    if (errors.length > 0) {
+      res.status(400).json({ errors });
+      return;
+    }
+
+    await Promise.all(
+      affectedEntries.map(async (entry) => {
+        if (!isValidChapterId(entry?.id) || !entry?.json) return;
+        await writeJson(chapterPath(entry.id), entry.json);
+      })
+    );
+    await writeJson(chapterPath(chapterId), chapter);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/chapters/:chapterId", async (req, res, next) => {
   try {
     res.json(await readJson(chapterPath(req.params.chapterId)));
@@ -406,6 +451,8 @@ app.delete("/api/chapters/:chapterId", async (req, res, next) => {
     }
 
     const analysis = await analyzeGame();
+    const deletedChapter = await readJson(filePath);
+    const affectedEntries = [];
     let removedTriggers = 0;
     await Promise.all(
       analysis.chapters
@@ -422,12 +469,16 @@ app.delete("/api/chapters/:chapterId", async (req, res, next) => {
               if (before !== action.triggers.length) changed = true;
             });
           });
-          if (changed) await writeJson(path.join(gameDir, entry.file), entry.json);
+          if (changed) {
+            affectedEntries.push({ id: entry.id, json: await readJson(path.join(gameDir, entry.file)) });
+            await writeJson(path.join(gameDir, entry.file), entry.json);
+          }
         })
     );
 
     const start = analysis.entries.find((entry) => entry.id === startChapterId);
     if (start?.json?.chapterId === chapterId) {
+      affectedEntries.push({ id: start.id, json: await readJson(path.join(gameDir, start.file)) });
       const fallbackChapter = analysis.chapters.find((entry) => entry.id !== chapterId);
       if (fallbackChapter) {
         start.json.chapterId = fallbackChapter.id;
@@ -440,7 +491,7 @@ app.delete("/api/chapters/:chapterId", async (req, res, next) => {
     }
 
     await fs.unlink(filePath);
-    res.json({ ok: true, removedTriggers });
+    res.json({ ok: true, removedTriggers, deletedChapter, affectedEntries });
   } catch (error) {
     next(error);
   }
