@@ -2332,6 +2332,11 @@ loadChapters().catch((error) => {
 });
 
 window.addEventListener("resize", resizeGraph);
+window.addEventListener("beforeunload", (event) => {
+  if (!state.dirty) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
 window.addEventListener("click", hideContextMenu);
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") hideContextMenu();
