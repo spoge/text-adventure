@@ -46,7 +46,7 @@
           ]
         },
         {
-          "text": "Go to the Village Shop",
+          "text": "Go to Village Shop",
           "triggers": [
             {
               "type": "movement",
@@ -58,7 +58,7 @@
           ]
         },
         {
-          "text": "Go to the Village Docks",
+          "text": "Go to Village Docks",
           "triggers": [
             {
               "type": "movement",
