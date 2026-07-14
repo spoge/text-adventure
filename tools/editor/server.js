@@ -689,10 +689,9 @@ app.post("/api/deploy", async (_req, res, next) => {
   deployInProgress = true;
   try {
     const output = await new Promise((resolve, reject) => {
-      const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-      const child = spawn(npmCommand, ["run", "deploy"], {
+      const child = spawn("npm run deploy", {
         cwd: repoRoot,
-        env: process.env,
+        shell: true,
       });
       const chunks = [];
       const appendOutput = (chunk) => chunks.push(chunk.toString());
