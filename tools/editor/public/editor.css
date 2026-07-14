@@ -120,6 +120,34 @@ textarea {
   width: auto;
 }
 
+.toolbar-menu-bar {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.toolbar-menu-bar button {
+  background: #171d28;
+  border-color: transparent;
+  border-radius: 6px 6px 0 0;
+  color: var(--muted);
+  padding-inline: 0.65rem;
+}
+
+.toolbar-menu-bar button::after {
+  content: " ▾";
+  font-size: 0.75em;
+}
+
+.toolbar-menu-bar button:hover,
+.toolbar-menu-bar button.open {
+  background: #10141b;
+  border-color: var(--line);
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
 .status {
   color: var(--muted);
   margin-left: auto;
@@ -590,6 +618,15 @@ body.panel-resizing.preview-below-resizing {
 
 .context-menu button:hover {
   background: var(--panel-2);
+}
+
+.context-menu button.active {
+  color: var(--accent);
+}
+
+.context-menu-separator {
+  border-top: 1px solid var(--line);
+  margin: 0.25rem 0;
 }
 
 .context-menu .danger {

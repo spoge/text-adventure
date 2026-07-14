@@ -64,19 +64,16 @@ const state = {
 
 const layoutEl = document.querySelector(".layout");
 const chapterSelect = document.getElementById("chapterSelect");
-const addChapterButton = document.getElementById("addChapterButton");
-const deleteChapterButton = document.getElementById("deleteChapterButton");
-const safeDeletionCheckbox = document.getElementById("safeDeletionCheckbox");
-const addSceneButton = document.getElementById("addSceneButton");
-const graphLayoutSelect = document.getElementById("graphLayoutSelect");
-const previewLayoutSelect = document.getElementById("previewLayoutSelect");
-const resetPanelLayoutButton = document.getElementById("resetPanelLayoutButton");
-const fitGraphButton = document.getElementById("fitGraphButton");
+const fileMenuButton = document.getElementById("fileMenuButton");
+const editMenuButton = document.getElementById("editMenuButton");
+const chapterMenuButton = document.getElementById("chapterMenuButton");
+const sceneMenuButton = document.getElementById("sceneMenuButton");
+const viewMenuButton = document.getElementById("viewMenuButton");
+const layoutMenuButton = document.getElementById("layoutMenuButton");
+const toolsMenuButton = document.getElementById("toolsMenuButton");
 const undoButton = document.getElementById("undoButton");
 const redoButton = document.getElementById("redoButton");
-const verifyButton = document.getElementById("verifyButton");
 const saveButton = document.getElementById("saveButton");
-const deployButton = document.getElementById("deployButton");
 const statusEl = document.getElementById("status");
 const validationPanel = document.getElementById("validationPanel");
 const editorEl = document.getElementById("editor");
@@ -621,7 +618,6 @@ const applyPanelLayout = ({ persist = false } = {}) => {
   const bounds = editorPreviewSplitBounds(mode, rect);
   const split = clamp(state.panelLayout.splits[mode], bounds.min, bounds.max);
   layoutEl.style.setProperty("--editor-preview-split", `${split}%`);
-  previewLayoutSelect.value = mode;
   editorPreviewSplitter.setAttribute("aria-orientation", mode === "beside" ? "vertical" : "horizontal");
   if (persist) savePanelLayout();
   resizeGraph();
@@ -1784,6 +1780,9 @@ const button = (label, onClick, className = "") => {
 const hideContextMenu = () => {
   state.contextMenu?.remove();
   state.contextMenu = null;
+  document.querySelectorAll(".toolbar-menu-bar button.open").forEach((button) => {
+    button.classList.remove("open");
+  });
 };
 
 const showContextMenu = (event, items) => {
@@ -1791,10 +1790,17 @@ const showContextMenu = (event, items) => {
   const menu = document.createElement("div");
   menu.className = "context-menu";
   items.forEach((item) => {
+    if (item.separator) {
+      const separator = document.createElement("div");
+      separator.className = "context-menu-separator";
+      menu.appendChild(separator);
+      return;
+    }
     const menuButton = button(item.label, async () => {
       hideContextMenu();
       await item.onClick?.();
-    }, item.danger ? "danger" : "");
+    }, [item.danger ? "danger" : "", item.active ? "active" : ""].filter(Boolean).join(" "));
+    if (item.active) menuButton.textContent = `✓ ${item.label}`;
     menuButton.disabled = Boolean(item.disabled);
     menu.appendChild(menuButton);
   });
@@ -1806,6 +1812,12 @@ const showContextMenu = (event, items) => {
   menu.style.left = `${Math.min(x, window.innerWidth - bounds.width - 8)}px`;
   menu.style.top = `${Math.min(y, window.innerHeight - bounds.height - 8)}px`;
   state.contextMenu = menu;
+};
+
+const showToolbarMenu = (anchor, items) => {
+  const bounds = anchor.getBoundingClientRect();
+  showContextMenu({ clientX: bounds.left, clientY: bounds.bottom + 4 }, items);
+  anchor.classList.add("open");
 };
 
 const duplicateArrayItem = (array, index) => {
@@ -2497,27 +2509,7 @@ const renderEditor = () => {
   title.className = "section-header";
   const h2 = document.createElement("h2");
   h2.textContent = `Editing: ${scene.name || "Untitled"} / ${scene.id}`;
-  title.append(
-    h2,
-    button(state.editorView.singleLine ? "Full cards" : "Single-line", () => {
-      state.editorView.singleLine = !state.editorView.singleLine;
-      clearExpandedRows();
-      renderEditor();
-    }, state.editorView.singleLine ? "small active" : "small")
-  );
-  if (state.editorView.singleLine) {
-    title.appendChild(
-      button(state.editorView.singleLineFullText ? "Short text" : "Wrap full text", () => {
-        state.editorView.singleLineFullText = !state.editorView.singleLineFullText;
-        renderEditor();
-      }, state.editorView.singleLineFullText ? "small active" : "small")
-    );
-  }
-  title.append(
-    button("Collapse all", () => collapseSceneGroups(scene), "small"),
-    button("Expand all", () => expandSceneGroups(scene), "small"),
-    button("Delete Scene", () => deleteScene(scene), "danger")
-  );
+  title.appendChild(h2);
   editorEl.appendChild(title);
 
   const fields = document.createElement("div");
@@ -2638,9 +2630,6 @@ const loadChapter = async (chapterId, selectedSceneId) => {
   state.undoStack = [];
   state.redoStack = [];
   state.editorView.collapsedGroups = {};
-  addSceneButton.disabled = !chapter.scenes;
-  fitGraphButton.disabled = !chapter.scenes && chapterId !== startChapterId;
-  deleteChapterButton.disabled = chapterId === startChapterId;
   clearExpandedRows();
   updateDirtyStatus();
   if (selectedSceneId && state.selectedSceneId !== selectedSceneId) {
@@ -2684,18 +2673,6 @@ chapterSelect.addEventListener("change", async () => {
   await loadChapter(chapterSelect.value);
 });
 
-graphLayoutSelect.addEventListener("change", () => {
-  state.graphLayoutMode = graphLayoutSelect.value;
-  renderGraph({ relayout: true });
-});
-
-previewLayoutSelect.addEventListener("change", () => {
-  state.panelLayout.mode = previewLayoutSelect.value;
-  applyPanelLayout({ persist: true });
-});
-
-resetPanelLayoutButton.addEventListener("click", resetPanelLayout);
-
 graphWorkspaceSplitter.addEventListener("pointerdown", (event) => startPanelResize("graphWorkspace", event));
 graphWorkspaceSplitter.addEventListener("pointermove", updatePanelSplit);
 graphWorkspaceSplitter.addEventListener("pointerup", stopPanelResize);
@@ -2706,11 +2683,6 @@ editorPreviewSplitter.addEventListener("pointermove", updatePanelSplit);
 editorPreviewSplitter.addEventListener("pointerup", stopPanelResize);
 editorPreviewSplitter.addEventListener("pointercancel", stopPanelResize);
 
-safeDeletionCheckbox.addEventListener("change", () => {
-  state.safeDeletion = safeDeletionCheckbox.checked;
-});
-
-fitGraphButton.addEventListener("click", fitGraph);
 undoButton.addEventListener("click", undo);
 redoButton.addEventListener("click", redo);
 
@@ -2743,7 +2715,7 @@ const renderValidationResults = (items) => {
   resizeGraph();
 };
 
-verifyButton.addEventListener("click", async () => {
+const verifyGame = async () => {
   try {
     setStatus("Verifying...");
     const result = await api("/api/validation");
@@ -2752,9 +2724,9 @@ verifyButton.addEventListener("click", async () => {
   } catch (error) {
     setStatus(error.message, "error");
   }
-});
+};
 
-addChapterButton.addEventListener("click", async () => {
+const addChapter = async () => {
   if (state.dirty && !confirm("Discard unsaved changes?")) return;
   const chapterId = prompt("New chapter id");
   if (!chapterId) return;
@@ -2779,9 +2751,9 @@ addChapterButton.addEventListener("click", async () => {
     setStatus(error.message, "error");
     alert(error.message);
   }
-});
+};
 
-deleteChapterButton.addEventListener("click", async () => {
+const deleteCurrentChapter = async () => {
   if (!state.chapterId || state.chapterId === startChapterId) {
     alert("The start config cannot be deleted.");
     return;
@@ -2806,11 +2778,9 @@ deleteChapterButton.addEventListener("click", async () => {
     setStatus(error.message, "error");
     alert(error.message);
   }
-});
+};
 
-addSceneButton.addEventListener("click", addScene);
-
-saveButton.addEventListener("click", async () => {
+const saveChapter = async () => {
   if (!state.chapter || !state.chapterId) return;
   try {
     setStatus("Saving...");
@@ -2825,15 +2795,14 @@ saveButton.addEventListener("click", async () => {
     setStatus(error.message, "error");
     alert(error.message);
   }
-});
+};
 
-deployButton.addEventListener("click", async () => {
+const deployGame = async () => {
   if (state.deploying) return;
   if (state.dirty && !confirm("You have unsaved changes. Deploy the saved files on disk anyway?")) return;
   if (!confirm("Deploy the game to the website now?")) return;
 
   state.deploying = true;
-  deployButton.disabled = true;
   try {
     setStatus("Deploying...");
     const result = await api("/api/deploy", { method: "POST" });
@@ -2844,9 +2813,119 @@ deployButton.addEventListener("click", async () => {
     alert(error.message);
   } finally {
     state.deploying = false;
-    deployButton.disabled = false;
   }
+};
+
+const setGraphLayout = (mode) => {
+  state.graphLayoutMode = mode;
+  renderGraph({ relayout: true });
+};
+
+const setPreviewLayout = (mode) => {
+  state.panelLayout.mode = mode;
+  applyPanelLayout({ persist: true });
+};
+
+const currentScene = () => sceneById(state.selectedSceneId);
+
+const toggleSingleLineCards = () => {
+  state.editorView.singleLine = !state.editorView.singleLine;
+  clearExpandedRows();
+  renderEditor();
+};
+
+const toggleFullTextRows = () => {
+  state.editorView.singleLineFullText = !state.editorView.singleLineFullText;
+  renderEditor();
+};
+
+const menuSceneAction = (action) => {
+  const scene = currentScene();
+  if (!scene) return;
+  action(scene);
+};
+
+const graphLayoutItems = () => ["auto", "directed", "organic", "grid"].map((mode) => ({
+  label: `Graph: ${mode[0].toUpperCase()}${mode.slice(1)}`,
+  active: state.graphLayoutMode === mode,
+  onClick: () => setGraphLayout(mode),
+}));
+
+const toolbarMenus = [
+  {
+    button: fileMenuButton,
+    items: () => [
+      { label: "Save", onClick: saveChapter, disabled: !state.chapter || !state.chapterId },
+      { label: "Deploy", onClick: deployGame, disabled: state.deploying },
+    ],
+  },
+  {
+    button: editMenuButton,
+    items: () => [
+      { label: "Undo", onClick: undo, disabled: state.undoStack.length === 0 },
+      { label: "Redo", onClick: redo, disabled: state.redoStack.length === 0 },
+    ],
+  },
+  {
+    button: chapterMenuButton,
+    items: () => [
+      { label: "Add Chapter", onClick: addChapter },
+      { label: "Delete Chapter", onClick: deleteCurrentChapter, disabled: !state.chapterId || state.chapterId === startChapterId, danger: true },
+      { separator: true },
+      {
+        label: `${state.safeDeletion ? "Disable" : "Enable"} Safe Deletion`,
+        active: state.safeDeletion,
+        onClick: () => {
+          state.safeDeletion = !state.safeDeletion;
+        },
+      },
+    ],
+  },
+  {
+    button: sceneMenuButton,
+    items: () => [
+      { label: "Add Scene", onClick: addScene, disabled: !state.chapter?.scenes },
+      { label: "Delete Scene", onClick: () => menuSceneAction(deleteScene), disabled: !currentScene(), danger: true },
+      { separator: true },
+      { label: "Collapse All Cards", onClick: () => menuSceneAction(collapseSceneGroups), disabled: !currentScene() },
+      { label: "Expand All Cards", onClick: () => menuSceneAction(expandSceneGroups), disabled: !currentScene() },
+    ],
+  },
+  {
+    button: viewMenuButton,
+    items: () => [
+      { label: "Compact Cards", onClick: toggleSingleLineCards, active: state.editorView.singleLine },
+      { label: "Wrap Compact Card Text", onClick: toggleFullTextRows, disabled: !state.editorView.singleLine, active: state.editorView.singleLine && state.editorView.singleLineFullText },
+    ],
+  },
+  {
+    button: layoutMenuButton,
+    items: () => [
+      ...graphLayoutItems(),
+      { separator: true },
+      { label: "Preview: Beside Editor", active: state.panelLayout.mode === "beside", onClick: () => setPreviewLayout("beside") },
+      { label: "Preview: Below Editor", active: state.panelLayout.mode === "below", onClick: () => setPreviewLayout("below") },
+      { separator: true },
+      { label: "Fit Graph", onClick: fitGraph, disabled: !state.chapter?.scenes && state.chapterId !== startChapterId },
+      { label: "Reset Panel Layout", onClick: resetPanelLayout },
+    ],
+  },
+  {
+    button: toolsMenuButton,
+    items: () => [
+      { label: "Verify", onClick: verifyGame },
+    ],
+  },
+];
+
+toolbarMenus.forEach(({ button: menuButton, items }) => {
+  menuButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    showToolbarMenu(menuButton, items());
+  });
 });
+
+saveButton.addEventListener("click", saveChapter);
 
 loadPanelLayout();
 applyPanelLayout();

@@ -15,36 +15,18 @@
         <label for="chapterSelect">Chapter</label>
         <select id="chapterSelect"></select>
       </div>
-      <button id="addChapterButton" type="button">Add Chapter</button>
-      <button id="deleteChapterButton" type="button" class="danger">Delete Chapter</button>
-      <label class="toolbar-checkbox">
-        <input id="safeDeletionCheckbox" type="checkbox" checked />
-        Safe deletion
-      </label>
-      <button id="addSceneButton" type="button">Add Scene</button>
-      <div>
-        <label for="graphLayoutSelect">Graph Layout</label>
-        <select id="graphLayoutSelect">
-          <option value="auto">Auto</option>
-          <option value="directed">Directed</option>
-          <option value="organic">Organic</option>
-          <option value="grid">Grid</option>
-        </select>
-      </div>
-      <div>
-        <label for="previewLayoutSelect">Preview Layout</label>
-        <select id="previewLayoutSelect">
-          <option value="beside">Beside editor</option>
-          <option value="below">Below editor</option>
-        </select>
-      </div>
-      <button id="resetPanelLayoutButton" type="button">Reset Layout</button>
-      <button id="fitGraphButton" type="button">Fit Graph</button>
+      <nav class="toolbar-menu-bar" aria-label="Editor menus">
+        <button id="fileMenuButton" type="button">File</button>
+        <button id="editMenuButton" type="button">Edit</button>
+        <button id="chapterMenuButton" type="button">Chapter</button>
+        <button id="sceneMenuButton" type="button">Scene</button>
+        <button id="viewMenuButton" type="button">View</button>
+        <button id="layoutMenuButton" type="button">Layout</button>
+        <button id="toolsMenuButton" type="button">Tools</button>
+      </nav>
       <button id="undoButton" type="button" disabled>Undo</button>
       <button id="redoButton" type="button" disabled>Redo</button>
-      <button id="verifyButton" type="button">Verify</button>
       <button id="saveButton" type="button">Save</button>
-      <button id="deployButton" type="button">Deploy</button>
       <span id="status" class="status">Loading chapters...</span>
     </header>
 
