@@ -40,6 +40,7 @@ const state = {
   sceneClipboard: null,
   contextMenu: null,
   pendingScrollRowKey: "",
+  deploying: false,
   editorView: {
     singleLine: true,
     singleLineFullText: true,
@@ -59,6 +60,7 @@ const undoButton = document.getElementById("undoButton");
 const redoButton = document.getElementById("redoButton");
 const verifyButton = document.getElementById("verifyButton");
 const saveButton = document.getElementById("saveButton");
+const deployButton = document.getElementById("deployButton");
 const statusEl = document.getElementById("status");
 const validationPanel = document.getElementById("validationPanel");
 const editorEl = document.getElementById("editor");
@@ -2324,6 +2326,27 @@ saveButton.addEventListener("click", async () => {
   } catch (error) {
     setStatus(error.message, "error");
     alert(error.message);
+  }
+});
+
+deployButton.addEventListener("click", async () => {
+  if (state.deploying) return;
+  if (state.dirty && !confirm("You have unsaved changes. Deploy the saved files on disk anyway?")) return;
+  if (!confirm("Deploy the game to the website now?")) return;
+
+  state.deploying = true;
+  deployButton.disabled = true;
+  try {
+    setStatus("Deploying...");
+    const result = await api("/api/deploy", { method: "POST" });
+    setStatus("Deploy complete", "saved");
+    if (result.output) console.log(result.output);
+  } catch (error) {
+    setStatus(error.message, "error");
+    alert(error.message);
+  } finally {
+    state.deploying = false;
+    deployButton.disabled = false;
   }
 });
 

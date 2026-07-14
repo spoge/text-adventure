@@ -1,4 +1,5 @@
 const express = require("express");
+const { spawn } = require("child_process");
 const fs = require("fs/promises");
 const path = require("path");
 
@@ -7,6 +8,7 @@ const port = process.env.EDITOR_PORT || 4000;
 const repoRoot = path.resolve(__dirname, "../..");
 const gameDir = path.join(repoRoot, "public", "game");
 const staticDir = path.join(__dirname, "public");
+let deployInProgress = false;
 
 app.use(express.json({ limit: "5mb" }));
 app.use(express.static(staticDir));
@@ -675,6 +677,47 @@ app.get("/api/validation", async (_req, res, next) => {
     res.json({ items: analysis.items });
   } catch (error) {
     next(error);
+  }
+});
+
+app.post("/api/deploy", async (_req, res, next) => {
+  if (deployInProgress) {
+    res.status(409).json({ error: "Deploy already in progress" });
+    return;
+  }
+
+  deployInProgress = true;
+  try {
+    const output = await new Promise((resolve, reject) => {
+      const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+      const child = spawn(npmCommand, ["run", "deploy"], {
+        cwd: repoRoot,
+        env: process.env,
+      });
+      const chunks = [];
+      const appendOutput = (chunk) => chunks.push(chunk.toString());
+
+      child.stdout.on("data", appendOutput);
+      child.stderr.on("data", appendOutput);
+      child.on("error", reject);
+      child.on("close", (code) => {
+        const combinedOutput = chunks.join("").trim();
+        if (code === 0) {
+          resolve(combinedOutput);
+          return;
+        }
+
+        const error = new Error(combinedOutput || `Deploy failed with exit code ${code}`);
+        error.status = 500;
+        reject(error);
+      });
+    });
+
+    res.json({ ok: true, output });
+  } catch (error) {
+    next(error);
+  } finally {
+    deployInProgress = false;
   }
 });
 
