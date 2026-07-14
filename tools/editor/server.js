@@ -124,7 +124,7 @@ const validateChapter = (chapter) => {
           return;
         }
         if (
-          !["movement", "add_flag", "remove_flag", "remove_all_flags"].includes(
+          !["movement", "add_flag", "remove_flag", "remove_all_flags", "remove_all_flags_except"].includes(
             trigger.type
           )
         ) {
@@ -132,6 +132,15 @@ const validateChapter = (chapter) => {
         }
         if (trigger.type !== "remove_all_flags" && !trigger.target) {
           errors.push(`${triggerPath}.target is required`);
+        }
+        if (
+          trigger.type === "remove_all_flags_except" &&
+          String(trigger.target || "")
+            .split(",")
+            .map((flag) => flag.trim())
+            .filter(Boolean).length === 0
+        ) {
+          errors.push(`${triggerPath}.target must include at least one flag to keep`);
         }
         if (
           trigger.type === "movement" &&

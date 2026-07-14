@@ -134,8 +134,27 @@ Triggers are stuff that happenes when an action is performed by the player.
 
 ```
 {
-    "type": "add_flag",
+    "type": "remove_flag",
     "target": "flag_to_remove",
+}
+```
+
+#### `remove_all_flags`
+
+```
+{
+    "type": "remove_all_flags"
+}
+```
+
+#### `remove_all_flags_except`
+
+Removes all current flags except the comma-separated flags in `target`.
+
+```
+{
+    "type": "remove_all_flags_except",
+    "target": "flag_to_keep, another_flag_to_keep"
 }
 ```
 

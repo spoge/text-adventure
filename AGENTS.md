@@ -22,7 +22,7 @@
 
 - Chapter JSON files must expose a top-level `scenes` array. Scenes use `id`, `name`, `paragraphs`, and `actions`.
 - Movement triggers use `target` for the scene and optional `chapterId` for cross-chapter moves. The README's `chapter` field example is stale; code reads `trigger.chapterId`.
-- Supported trigger types are `movement`, `add_flag`, `remove_flag`, and `remove_all_flags`.
+- Supported trigger types are `movement`, `add_flag`, `remove_flag`, `remove_all_flags`, and `remove_all_flags_except`.
 - Paragraphs can be strings or objects with `text` plus flag visibility fields. The string `"---"` renders as a horizontal rule.
 - Flag fields supported by code are `hideAny`, `hideAll`, `showAny`, and `showAll`.
 - Paragraph objects with show flags are sorted by the order the matching flags were acquired unless `ignoreSortByFlag` is set.

@@ -18,6 +18,15 @@ const GameSaveReducer = (state, action) => {
       return { ...state, flags: [...state.flags, action.payload] };
     case "remove_all_flags":
       return { ...state, flags: [] };
+    case "remove_all_flags_except": {
+      if (!Array.isArray(action.payload) || action.payload.length === 0) {
+        return state;
+      }
+      return {
+        ...state,
+        flags: state.flags.filter((flag) => action.payload.includes(flag)),
+      };
+    }
     default:
       return state;
   }

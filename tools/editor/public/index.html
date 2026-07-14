@@ -31,6 +31,14 @@
           <option value="grid">Grid</option>
         </select>
       </div>
+      <div>
+        <label for="previewLayoutSelect">Preview Layout</label>
+        <select id="previewLayoutSelect">
+          <option value="beside">Beside editor</option>
+          <option value="below">Below editor</option>
+        </select>
+      </div>
+      <button id="resetPanelLayoutButton" type="button">Reset Layout</button>
       <button id="fitGraphButton" type="button">Fit Graph</button>
       <button id="undoButton" type="button" disabled>Undo</button>
       <button id="redoButton" type="button" disabled>Redo</button>
@@ -46,12 +54,16 @@
       <section class="graph-panel">
         <div id="graph"></div>
       </section>
-      <aside class="editor-panel">
-        <div id="editor"></div>
-      </aside>
-      <aside class="preview-panel">
-        <div id="preview"></div>
-      </aside>
+      <div id="graphWorkspaceSplitter" class="panel-splitter graph-workspace-splitter" role="separator" aria-label="Resize graph and editor panels" aria-orientation="vertical"></div>
+      <section class="workspace-panel">
+        <aside class="editor-panel">
+          <div id="editor"></div>
+        </aside>
+        <div id="editorPreviewSplitter" class="panel-splitter" role="separator" aria-label="Resize editor and preview panels"></div>
+        <aside class="preview-panel">
+          <div id="preview"></div>
+        </aside>
+      </section>
     </main>
 
     <datalist id="sceneIds"></datalist>

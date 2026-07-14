@@ -18,6 +18,8 @@ const graphOrganicNodeRepulsion = 14000;
 const graphOrganicIdealEdgeLength = 280;
 const graphOrganicNodeOverlap = 70;
 const startChapterId = "-start-";
+const panelLayoutStorageKey = "textAdventureEditorPanelLayout";
+const editorSelectionStorageKey = "textAdventureEditorSelection";
 
 const state = {
   chapterId: "",
@@ -39,6 +41,8 @@ const state = {
   safeDeletion: true,
   sceneClipboard: null,
   contextMenu: null,
+  autocompleteMenu: null,
+  autocompleteInput: null,
   pendingScrollRowKey: "",
   deploying: false,
   editorView: {
@@ -47,14 +51,26 @@ const state = {
     collapsedGroups: {},
     expandedRows: {},
   },
+  panelLayout: {
+    mode: "beside",
+    graphSplit: 55,
+    splits: {
+      beside: 50,
+      below: 58,
+    },
+  },
+  panelResize: null,
 };
 
+const layoutEl = document.querySelector(".layout");
 const chapterSelect = document.getElementById("chapterSelect");
 const addChapterButton = document.getElementById("addChapterButton");
 const deleteChapterButton = document.getElementById("deleteChapterButton");
 const safeDeletionCheckbox = document.getElementById("safeDeletionCheckbox");
 const addSceneButton = document.getElementById("addSceneButton");
 const graphLayoutSelect = document.getElementById("graphLayoutSelect");
+const previewLayoutSelect = document.getElementById("previewLayoutSelect");
+const resetPanelLayoutButton = document.getElementById("resetPanelLayoutButton");
 const fitGraphButton = document.getElementById("fitGraphButton");
 const undoButton = document.getElementById("undoButton");
 const redoButton = document.getElementById("redoButton");
@@ -65,6 +81,8 @@ const statusEl = document.getElementById("status");
 const validationPanel = document.getElementById("validationPanel");
 const editorEl = document.getElementById("editor");
 const previewEl = document.getElementById("preview");
+const graphWorkspaceSplitter = document.getElementById("graphWorkspaceSplitter");
+const editorPreviewSplitter = document.getElementById("editorPreviewSplitter");
 const sceneIdsEl = document.getElementById("sceneIds");
 const startSceneIdsEl = document.getElementById("startSceneIds");
 const chapterIdsEl = document.getElementById("chapterIds");
@@ -169,6 +187,13 @@ const flagReferences = (flags, ignoredObject) => {
         if (["add_flag", "remove_flag"].includes(trigger.type) && flagSet.has(trigger.target)) {
           references.push(`${scene.id} action ${actionIndex + 1} trigger ${triggerIndex + 1} ${trigger.type} "${trigger.target}"`);
         }
+        if (trigger.type === "remove_all_flags_except") {
+          splitFlags(trigger.target || "").forEach((flag) => {
+            if (flagSet.has(flag)) {
+              references.push(`${scene.id} action ${actionIndex + 1} trigger ${triggerIndex + 1} keeps flag "${flag}"`);
+            }
+          });
+        }
       });
     });
   });
@@ -177,8 +202,11 @@ const flagReferences = (flags, ignoredObject) => {
 
 const flagsChangedByTriggers = (triggers = []) =>
   triggers
-    .filter((trigger) => ["add_flag", "remove_flag"].includes(trigger.type) && trigger.target)
-    .map((trigger) => trigger.target);
+    .flatMap((trigger) => {
+      if (["add_flag", "remove_flag"].includes(trigger.type) && trigger.target) return [trigger.target];
+      if (trigger.type === "remove_all_flags_except") return splitFlags(trigger.target || "");
+      return [];
+    });
 
 const splitFlags = (value) =>
   value
@@ -251,6 +279,73 @@ const movementTargetDatalist = (id, trigger) => {
   fillMovementTargetDatalist(datalist, trigger);
   return datalist;
 };
+
+const hideAutocompleteMenu = () => {
+  state.autocompleteMenu?.remove();
+  state.autocompleteMenu = null;
+  state.autocompleteInput = null;
+};
+
+const positionAutocompleteMenu = (input, menu) => {
+  const bounds = input.getBoundingClientRect();
+  menu.style.left = `${bounds.left}px`;
+  menu.style.top = `${bounds.bottom + 4}px`;
+  menu.style.width = `${Math.max(bounds.width, 224)}px`;
+};
+
+const showAutocompleteMenu = (input, items, query, onSelect, emptyText = "No matches") => {
+  hideAutocompleteMenu();
+  const menu = document.createElement("div");
+  menu.className = "autocomplete-menu";
+  const search = String(query || "").trim().toLowerCase();
+  const matches = items.filter((item) => {
+    if (!search) return true;
+    return [item.value, item.detail].filter(Boolean).some((value) => value.toLowerCase().includes(search));
+  });
+
+  if (matches.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "autocomplete-empty";
+    empty.textContent = emptyText;
+    menu.appendChild(empty);
+  } else {
+    matches.forEach((item) => {
+      const option = button("", () => onSelect(item.value));
+      const title = document.createElement("span");
+      title.className = "autocomplete-title";
+      title.textContent = item.value;
+      const detail = document.createElement("span");
+      detail.className = "autocomplete-detail";
+      detail.textContent = item.detail || "";
+      option.append(title, detail);
+      menu.appendChild(option);
+    });
+  }
+
+  document.body.appendChild(menu);
+  positionAutocompleteMenu(input, menu);
+  state.autocompleteMenu = menu;
+  state.autocompleteInput = input;
+};
+
+const sceneAutocompleteItems = (chapterId) => {
+  const chapter = chapterId && chapterId !== state.chapterId
+    ? chapterMetaById(chapterId)
+    : null;
+  const scenes = chapter?.scenes || state.chapter?.scenes || [];
+  return scenes.map((scene) => ({
+    value: scene.id,
+    detail: scene.name || "Untitled scene",
+  }));
+};
+
+const chapterAutocompleteItems = () =>
+  state.chapters
+    .filter((chapter) => chapter.hasScenes)
+    .map((chapter) => ({
+      value: chapter.id,
+      detail: `${chapter.sceneCount ?? chapter.scenes?.length ?? 0} scenes`,
+    }));
 
 const renderStartSceneIdDatalist = () => {
   startSceneIdsEl.innerHTML = "";
@@ -470,6 +565,158 @@ const resizeGraph = () => {
     state.graph.resize();
     clampGraphPan();
   });
+};
+
+const savePanelLayout = () => {
+  try {
+    localStorage.setItem(panelLayoutStorageKey, JSON.stringify(state.panelLayout));
+  } catch (error) {
+    console.warn("Could not save editor panel layout", error);
+  }
+};
+
+const loadPanelLayout = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(panelLayoutStorageKey) || "null");
+    if (!saved || !["beside", "below"].includes(saved.mode)) return;
+    state.panelLayout.mode = saved.mode;
+    state.panelLayout.graphSplit = clamp(Number(saved.graphSplit) || 55, 20, 80);
+    state.panelLayout.splits.beside = clamp(Number(saved.splits?.beside) || 50, 20, 80);
+    state.panelLayout.splits.below = clamp(Number(saved.splits?.below) || 58, 20, 80);
+  } catch (error) {
+    console.warn("Could not load editor panel layout", error);
+  }
+};
+
+const graphWorkspaceSplitBounds = (rect) => {
+  const isCompact = window.innerWidth <= 1300;
+  const minGraph = isCompact ? 288 : 352;
+  const minWorkspace = state.panelLayout.mode === "beside" ? 544 : isCompact ? 416 : 480;
+  if (rect.width <= minGraph + minWorkspace) return { min: 50, max: 50 };
+  return {
+    min: (minGraph / rect.width) * 100,
+    max: ((rect.width - minWorkspace) / rect.width) * 100,
+  };
+};
+
+const editorPreviewSplitBounds = (mode, rect) => {
+  const size = mode === "beside" ? rect.width : rect.height;
+  const minEditor = mode === "beside" ? 256 : 224;
+  const minPreview = mode === "beside" ? 224 : 160;
+  if (size <= minEditor + minPreview) return { min: 50, max: 50 };
+  return {
+    min: (minEditor / size) * 100,
+    max: ((size - minPreview) / size) * 100,
+  };
+};
+
+const applyPanelLayout = ({ persist = false } = {}) => {
+  const mode = state.panelLayout.mode;
+  layoutEl.classList.toggle("preview-beside", mode === "beside");
+  layoutEl.classList.toggle("preview-below", mode === "below");
+  const graphBounds = graphWorkspaceSplitBounds(layoutEl.getBoundingClientRect());
+  const graphSplit = clamp(state.panelLayout.graphSplit, graphBounds.min, graphBounds.max);
+  layoutEl.style.setProperty("--graph-workspace-split", `${graphSplit}%`);
+  const rect = editorPreviewSplitter.parentElement.getBoundingClientRect();
+  const bounds = editorPreviewSplitBounds(mode, rect);
+  const split = clamp(state.panelLayout.splits[mode], bounds.min, bounds.max);
+  layoutEl.style.setProperty("--editor-preview-split", `${split}%`);
+  previewLayoutSelect.value = mode;
+  editorPreviewSplitter.setAttribute("aria-orientation", mode === "beside" ? "vertical" : "horizontal");
+  if (persist) savePanelLayout();
+  resizeGraph();
+};
+
+const resetPanelLayout = () => {
+  state.panelLayout = {
+    mode: "beside",
+    graphSplit: 55,
+    splits: {
+      beside: 50,
+      below: 58,
+    },
+  };
+  applyPanelLayout({ persist: true });
+};
+
+const saveEditorSelection = () => {
+  if (!state.chapterId) return;
+  try {
+    localStorage.setItem(editorSelectionStorageKey, JSON.stringify({
+      chapterId: state.chapterId,
+      sceneId: state.selectedSceneId || "",
+    }));
+  } catch (error) {
+    console.warn("Could not save editor selection", error);
+  }
+};
+
+const loadEditorSelection = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(editorSelectionStorageKey) || "null");
+    if (!saved || typeof saved.chapterId !== "string") return null;
+    return {
+      chapterId: saved.chapterId,
+      sceneId: typeof saved.sceneId === "string" ? saved.sceneId : "",
+    };
+  } catch (error) {
+    console.warn("Could not load editor selection", error);
+    return null;
+  }
+};
+
+const updatePanelSplit = (event) => {
+  if (!state.panelResize) return;
+  const { kind, mode, rect } = state.panelResize;
+  const rawSplit = kind === "graphWorkspace" || mode === "beside"
+    ? ((event.clientX - rect.left) / rect.width) * 100
+    : ((event.clientY - rect.top) / rect.height) * 100;
+  const bounds = kind === "graphWorkspace"
+    ? graphWorkspaceSplitBounds(rect)
+    : editorPreviewSplitBounds(mode, rect);
+  const split = clamp(rawSplit, bounds.min, bounds.max);
+  if (kind === "graphWorkspace") {
+    state.panelLayout.graphSplit = Math.round(split * 10) / 10;
+  } else {
+    state.panelLayout.splits[mode] = Math.round(split * 10) / 10;
+  }
+  applyPanelLayout();
+};
+
+const stopPanelResize = () => {
+  if (!state.panelResize) return;
+  const { splitter, pointerId } = state.panelResize;
+  try {
+    splitter.releasePointerCapture?.(pointerId);
+  } catch (error) {
+    console.warn("Could not release panel resize pointer capture", error);
+  }
+  state.panelResize = null;
+  splitter.classList.remove("dragging");
+  document.body.classList.remove("panel-resizing", "preview-below-resizing");
+  savePanelLayout();
+  resizeGraph();
+};
+
+const startPanelResize = (kind, event) => {
+  if (event.button !== 0) return;
+  const splitter = kind === "graphWorkspace" ? graphWorkspaceSplitter : editorPreviewSplitter;
+  const resizeTarget = kind === "graphWorkspace" ? layoutEl : editorPreviewSplitter.parentElement;
+  const rect = resizeTarget.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return;
+  event.preventDefault();
+  state.panelResize = {
+    kind,
+    mode: state.panelLayout.mode,
+    pointerId: event.pointerId,
+    rect,
+    splitter,
+  };
+  splitter.setPointerCapture?.(event.pointerId);
+  splitter.classList.add("dragging");
+  document.body.classList.add("panel-resizing");
+  document.body.classList.toggle("preview-below-resizing", kind === "editorPreview" && state.panelLayout.mode === "below");
+  updatePanelSplit(event);
 };
 
 const fitGraphAfterLayout = () => {
@@ -1155,6 +1402,9 @@ const collectSceneFlags = (scene) => {
       if (["add_flag", "remove_flag"].includes(trigger.type) && trigger.target) {
         flags.add(trigger.target);
       }
+      if (trigger.type === "remove_all_flags_except") {
+        splitFlags(trigger.target || "").forEach((flag) => flags.add(flag));
+      }
     });
   });
   return [...flags].sort((a, b) => a.localeCompare(b));
@@ -1220,6 +1470,10 @@ const applyPreviewFlagTriggers = (action) => {
       state.previewFlags = state.previewFlags.filter((flag) => flag !== trigger.target);
     } else if (trigger.type === "remove_all_flags") {
       state.previewFlags = [];
+    } else if (trigger.type === "remove_all_flags_except") {
+      const keptFlags = splitFlags(trigger.target || "");
+      if (keptFlags.length === 0) return;
+      state.previewFlags = state.previewFlags.filter((flag) => keptFlags.includes(flag));
     }
   });
 };
@@ -1376,6 +1630,9 @@ const renderPreview = () => {
 
 const triggerSummary = (trigger) => {
   if (trigger.type === "remove_all_flags") return "remove_all_flags";
+  if (trigger.type === "remove_all_flags_except") {
+    return `remove_all_flags_except -> ${trigger.target || "missing target"}`;
+  }
   const target = trigger.target || "missing target";
   if (trigger.type === "movement" && trigger.chapterId) {
     return `movement -> ${trigger.chapterId}:${target}`;
@@ -1388,6 +1645,7 @@ const shortTriggerSummary = (trigger) => {
   if (trigger.type === "add_flag") return `add: ${target}`;
   if (trigger.type === "remove_flag") return `remove: ${target}`;
   if (trigger.type === "remove_all_flags") return "remove all";
+  if (trigger.type === "remove_all_flags_except") return `remove all except: ${target}`;
   if (trigger.type === "movement" && trigger.chapterId) {
     return `move: chapter ${trigger.chapterId} scene ${target}`;
   }
@@ -1399,13 +1657,19 @@ const actionTriggerSummaries = (action) => {
   return triggers.length > 0 ? triggers.map(shortTriggerSummary) : ["no triggers"];
 };
 
-const compactRow = (title, details, onClick) => {
+const compactRow = (title, details, onClick, onContextMenu) => {
   const row = document.createElement("button");
   row.type = "button";
   row.className = state.editorView.singleLineFullText
     ? "compact-row full-text"
     : "compact-row";
   row.addEventListener("click", onClick);
+  if (onContextMenu) {
+    row.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      onContextMenu(event);
+    });
+  }
 
   const titleEl = document.createElement("span");
   titleEl.className = "compact-title";
@@ -1423,28 +1687,56 @@ const compactRow = (title, details, onClick) => {
   return row;
 };
 
-const groupToggle = (scene, name, label) =>
-  button(isGroupCollapsed(scene, name) ? `Show ${label}` : `Hide ${label}`, () => {
-    setGroupCollapsed(scene, name, !isGroupCollapsed(scene, name));
-  }, "small");
+const cardHeader = (title, onCollapse, onContextMenu) => {
+  const header = document.createElement("div");
+  header.className = onCollapse ? "card-header collapsible" : "card-header";
+  if (onCollapse) {
+    header.title = "Click to collapse";
+    header.addEventListener("click", onCollapse);
+  }
+  if (onContextMenu) {
+    header.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      onContextMenu(event);
+    });
+  }
 
-const collapseSceneGroups = (scene) => {
-  state.editorView.collapsedGroups[groupKey(scene, "paragraphs")] = true;
-  state.editorView.collapsedGroups[groupKey(scene, "actions")] = true;
-  scene.actions.forEach((_action, index) => {
-    state.editorView.collapsedGroups[groupKey(scene, `action:${index}:triggers`)] = true;
-  });
-  clearExpandedRows();
-  renderEditor();
+  const titleEl = document.createElement("span");
+  titleEl.className = "card-header-title";
+  titleEl.textContent = title;
+  const hint = document.createElement("span");
+  hint.className = "card-header-hint";
+  hint.textContent = onCollapse ? "Click to collapse" : "";
+  header.append(titleEl, hint);
+  return header;
 };
 
-const expandSceneGroups = (scene) => {
+const collapseSceneGroups = (scene) => {
+  state.editorView.singleLine = true;
   delete state.editorView.collapsedGroups[groupKey(scene, "paragraphs")];
   delete state.editorView.collapsedGroups[groupKey(scene, "actions")];
   scene.actions.forEach((_action, index) => {
     delete state.editorView.collapsedGroups[groupKey(scene, `action:${index}:triggers`)];
   });
   clearExpandedRows();
+  renderEditor();
+};
+
+const expandSceneGroups = (scene) => {
+  state.editorView.singleLine = true;
+  delete state.editorView.collapsedGroups[groupKey(scene, "paragraphs")];
+  delete state.editorView.collapsedGroups[groupKey(scene, "actions")];
+  clearExpandedRows();
+  scene.paragraphs.forEach((_paragraph, index) => {
+    expandNewRow(scene, "paragraph", index);
+  });
+  scene.actions.forEach((action, index) => {
+    delete state.editorView.collapsedGroups[groupKey(scene, `action:${index}:triggers`)];
+    expandNewRow(scene, "action", index);
+    (action.triggers || []).forEach((_trigger, triggerIndex) => {
+      expandNewRow(scene, "trigger", index, triggerIndex);
+    });
+  });
   renderEditor();
 };
 
@@ -1460,6 +1752,7 @@ const field = (labelText, value, onInput, options = {}) => {
   input.addEventListener("focus", () => {
     editSnapshot = chapterSnapshot();
     hasRecordedEdit = false;
+    options.onFocus?.(input);
   });
   input.addEventListener("input", () => {
     if (options.history !== false && !hasRecordedEdit) {
@@ -1469,6 +1762,7 @@ const field = (labelText, value, onInput, options = {}) => {
       updateHistoryButtons();
     }
     onInput(input.value);
+    options.onInput?.(input);
   });
   input.addEventListener("blur", () => {
     editSnapshot = "";
@@ -1512,6 +1806,110 @@ const showContextMenu = (event, items) => {
   menu.style.left = `${Math.min(x, window.innerWidth - bounds.width - 8)}px`;
   menu.style.top = `${Math.min(y, window.innerHeight - bounds.height - 8)}px`;
   state.contextMenu = menu;
+};
+
+const duplicateArrayItem = (array, index) => {
+  recordHistory();
+  const item = typeof array[index] === "object" && array[index] !== null
+    ? deepClone(array[index])
+    : array[index];
+  array.splice(index + 1, 0, item);
+};
+
+const duplicateParagraph = (scene, index) => {
+  duplicateArrayItem(scene.paragraphs, index);
+  expandNewRow(scene, "paragraph", index + 1);
+  markDirty();
+  renderEditor();
+};
+
+const duplicateAction = (scene, index) => {
+  duplicateArrayItem(scene.actions, index);
+  expandNewRow(scene, "action", index + 1);
+  markDirty();
+  renderEditor();
+  renderGraph();
+};
+
+const isMovementTrigger = (trigger) => (trigger?.type || "movement") === "movement";
+
+const hasMovementTrigger = (action, ignoredIndex) =>
+  (action.triggers || []).some((trigger, index) => index !== ignoredIndex && isMovementTrigger(trigger));
+
+const duplicateTrigger = (scene, action, actionIndex, index) => {
+  action.triggers = action.triggers || [];
+  if (isMovementTrigger(action.triggers[index]) && hasMovementTrigger(action, index)) {
+    alert("This action already has a movement trigger. Only the first movement trigger is used by the game.");
+    return;
+  }
+  if (isMovementTrigger(action.triggers[index])) {
+    alert("Movement triggers cannot be duplicated within the same action. Only one movement trigger is allowed per action.");
+    return;
+  }
+  duplicateArrayItem(action.triggers, index);
+  expandNewRow(scene, "trigger", actionIndex, index + 1);
+  markDirty();
+  renderEditor();
+  renderGraph();
+};
+
+const removeParagraph = (scene, paragraph, index) => {
+  const paragraphObject = typeof paragraph === "object" && paragraph !== null ? paragraph : { text: paragraph };
+  const visibility = visibilitySummary(paragraphObject);
+  const extra = visibility.length > 0
+    ? `\n\nThis paragraph has visibility rules: ${visibility.join("; ")}.`
+    : "";
+  if (!confirmDeletion(`paragraph ${index + 1} in ${scene.id}`, [], extra)) return;
+  recordHistory();
+  scene.paragraphs.splice(index, 1);
+  markDirty();
+  renderEditor();
+};
+
+const removeTrigger = (action, actionIndex, trigger, index) => {
+  const referencedFlags = trigger.type === "remove_all_flags_except"
+    ? splitFlags(trigger.target || "")
+    : ["add_flag", "remove_flag"].includes(trigger.type)
+      ? [trigger.target]
+      : [];
+  const references = referencedFlags.length > 0 ? flagReferences(referencedFlags, trigger) : [];
+  const extra = trigger.type === "movement"
+    ? `\n\nThis removes movement to ${trigger.chapterId ? `${trigger.chapterId}/` : ""}${trigger.target || "missing target"}.`
+    : "";
+  if (!confirmDeletion(`trigger ${index + 1} in action ${actionIndex + 1}`, references, extra)) return;
+  recordHistory();
+  action.triggers.splice(index, 1);
+  markDirty();
+  renderEditor();
+  renderGraph();
+};
+
+const removeAction = (scene, action, index) => {
+  const references = flagReferences(flagsChangedByTriggers(action.triggers), action);
+  const triggerDetails = (action.triggers || []).map(shortTriggerSummary).join("; ");
+  const extra = triggerDetails ? `\n\nThis action contains: ${triggerDetails}.` : "";
+  if (!confirmDeletion(`action ${index + 1} in ${scene.id}`, references, extra)) return;
+  recordHistory();
+  scene.actions.splice(index, 1);
+  markDirty();
+  renderEditor();
+  renderGraph();
+};
+
+const addTrigger = (scene, action, actionIndex) => {
+  recordHistory();
+  action.triggers = action.triggers || [];
+  const type = hasMovementTrigger(action) ? "add_flag" : "movement";
+  action.triggers.push({ type, target: "" });
+  if (type !== "movement") setStatus("Added flag trigger because this action already has a movement trigger", "saved");
+  expandNewRow(scene, "trigger", actionIndex, action.triggers.length - 1);
+  markDirty();
+  renderEditor();
+  renderGraph();
+};
+
+const editorItemContextMenu = (event, items) => {
+  showContextMenu(event, items.filter(Boolean));
 };
 
 const copyScene = (scene) => {
@@ -1715,12 +2113,30 @@ const renderParagraph = (scene, paragraph, index) => {
     return compactRow(
       `${index + 1}. ${compactText(paragraphObject.text, "Empty paragraph")}`,
       [isObject ? "object" : "string", ...visibilitySummary(paragraphObject)],
-      () => setRowExpanded(scene, "paragraph", index, undefined, true)
+      () => setRowExpanded(scene, "paragraph", index, undefined, true),
+      (event) => editorItemContextMenu(event, [
+        { label: "Expand", onClick: () => setRowExpanded(scene, "paragraph", index, undefined, true) },
+        { label: "Duplicate", onClick: () => duplicateParagraph(scene, index) },
+        { label: "Move Up", onClick: () => moveArrayItem(scene.paragraphs, index, -1), disabled: index === 0 },
+        { label: "Move Down", onClick: () => moveArrayItem(scene.paragraphs, index, 1), disabled: index === scene.paragraphs.length - 1 },
+        { label: "Remove", onClick: () => removeParagraph(scene, paragraph, index), danger: true },
+      ])
     );
   }
 
   const card = document.createElement("div");
   card.className = "card";
+  card.appendChild(cardHeader(
+    `Paragraph ${index + 1}`,
+    state.editorView.singleLine ? () => setRowExpanded(scene, "paragraph", index, undefined, false) : null,
+    (event) => editorItemContextMenu(event, [
+      state.editorView.singleLine && { label: "Collapse", onClick: () => setRowExpanded(scene, "paragraph", index, undefined, false) },
+      { label: "Duplicate", onClick: () => duplicateParagraph(scene, index) },
+      { label: "Move Up", onClick: () => moveArrayItem(scene.paragraphs, index, -1), disabled: index === 0 },
+      { label: "Move Down", onClick: () => moveArrayItem(scene.paragraphs, index, 1), disabled: index === scene.paragraphs.length - 1 },
+      { label: "Remove", onClick: () => removeParagraph(scene, paragraph, index), danger: true },
+    ])
+  ));
 
   const typeSelect = document.createElement("select");
   typeSelect.innerHTML = '<option value="string">String</option><option value="object">Object</option>';
@@ -1766,23 +2182,11 @@ const renderParagraph = (scene, paragraph, index) => {
 
   const actions = document.createElement("div");
   actions.className = "card-actions";
-  if (state.editorView.singleLine) {
-    actions.appendChild(button("Collapse", () => setRowExpanded(scene, "paragraph", index, undefined, false)));
-  }
   actions.append(
+    button("Duplicate", () => duplicateParagraph(scene, index)),
     button("Up", () => moveArrayItem(scene.paragraphs, index, -1)),
     button("Down", () => moveArrayItem(scene.paragraphs, index, 1)),
-    button("Remove", () => {
-      const visibility = visibilitySummary(paragraphObject);
-      const extra = visibility.length > 0
-        ? `\n\nThis paragraph has visibility rules: ${visibility.join("; ")}.`
-        : "";
-      if (!confirmDeletion(`paragraph ${index + 1} in ${scene.id}`, [], extra)) return;
-      recordHistory();
-      scene.paragraphs.splice(index, 1);
-      markDirty();
-      renderEditor();
-    }, "danger")
+    button("Remove", () => removeParagraph(scene, paragraph, index), "danger")
   );
   card.appendChild(actions);
   return card;
@@ -1794,7 +2198,14 @@ const renderTrigger = (scene, action, actionIndex, trigger, index) => {
     const row = compactRow(
       `${index + 1}. ${triggerSummary(trigger)}`,
       [],
-      () => setRowExpanded(scene, "trigger", actionIndex, index, true)
+      () => setRowExpanded(scene, "trigger", actionIndex, index, true),
+      (event) => editorItemContextMenu(event, [
+        { label: "Expand", onClick: () => setRowExpanded(scene, "trigger", actionIndex, index, true) },
+        !isMovementTrigger(trigger) && { label: "Duplicate", onClick: () => duplicateTrigger(scene, action, actionIndex, index) },
+        { label: "Move Up", onClick: () => moveArrayItem(action.triggers, index, -1), disabled: index === 0 },
+        { label: "Move Down", onClick: () => moveArrayItem(action.triggers, index, 1), disabled: index === (action.triggers || []).length - 1 },
+        { label: "Remove", onClick: () => removeTrigger(action, actionIndex, trigger, index), danger: true },
+      ])
     );
     row.dataset.rowKey = triggerRowKey;
     if (state.pendingScrollRowKey === triggerRowKey) row.classList.add("highlight-row");
@@ -1805,18 +2216,41 @@ const renderTrigger = (scene, action, actionIndex, trigger, index) => {
   card.className = "card";
   card.dataset.rowKey = triggerRowKey;
   if (state.pendingScrollRowKey === triggerRowKey) card.classList.add("highlight-row");
-  let targetDatalist = null;
-
+  card.appendChild(cardHeader(
+    `Trigger ${index + 1}: ${triggerSummary(trigger)}`,
+    state.editorView.singleLine ? () => setRowExpanded(scene, "trigger", actionIndex, index, false) : null,
+    (event) => editorItemContextMenu(event, [
+      state.editorView.singleLine && { label: "Collapse", onClick: () => setRowExpanded(scene, "trigger", actionIndex, index, false) },
+      !isMovementTrigger(trigger) && { label: "Duplicate", onClick: () => duplicateTrigger(scene, action, actionIndex, index) },
+      { label: "Move Up", onClick: () => moveArrayItem(action.triggers, index, -1), disabled: index === 0 },
+      { label: "Move Down", onClick: () => moveArrayItem(action.triggers, index, 1), disabled: index === (action.triggers || []).length - 1 },
+      { label: "Remove", onClick: () => removeTrigger(action, actionIndex, trigger, index), danger: true },
+    ])
+  ));
   const typeSelect = document.createElement("select");
-  typeSelect.innerHTML = ["movement", "add_flag", "remove_flag", "remove_all_flags"]
-    .map((type) => `<option value="${type}">${type}</option>`)
-    .join("");
+  const movementUnavailable = !isMovementTrigger(trigger) && hasMovementTrigger(action, index);
+  ["movement", "add_flag", "remove_flag", "remove_all_flags", "remove_all_flags_except"].forEach((type) => {
+    const option = document.createElement("option");
+    option.value = type;
+    option.textContent = type === "movement" && movementUnavailable
+      ? "movement (already exists)"
+      : type;
+    option.disabled = type === "movement" && movementUnavailable;
+    typeSelect.appendChild(option);
+  });
   typeSelect.value = trigger.type || "movement";
   typeSelect.addEventListener("change", () => {
+    if (typeSelect.value === "movement" && hasMovementTrigger(action, index)) {
+      alert("This action already has a movement trigger. Only one movement trigger is allowed per action.");
+      typeSelect.value = trigger.type || "movement";
+      return;
+    }
     recordHistory();
     trigger.type = typeSelect.value;
     if (trigger.type === "remove_all_flags") {
       delete trigger.target;
+      delete trigger.chapterId;
+    } else if (trigger.type !== "movement") {
       delete trigger.chapterId;
     }
     markDirty();
@@ -1831,56 +2265,66 @@ const renderTrigger = (scene, action, actionIndex, trigger, index) => {
   card.appendChild(typeWrapper);
 
   if (trigger.type !== "remove_all_flags") {
-    const targetDatalistId = trigger.type === "movement"
-      ? movementTargetDatalistId(scene, actionIndex, index)
-      : "";
+    const selectMovementTarget = (input, sceneId) => {
+      recordHistory();
+      input.value = sceneId;
+      trigger.target = sceneId;
+      hideAutocompleteMenu();
+      markDirty();
+      renderGraph();
+    };
     card.appendChild(
-      field("Target", trigger.target, (value) => {
+      field(trigger.type === "remove_all_flags_except" ? "Flags to keep" : "Target", trigger.target, (value) => {
         trigger.target = value;
         markDirty();
         renderGraph();
-      }, trigger.type === "movement" ? { list: targetDatalistId } : {})
+      }, trigger.type === "movement" ? {
+        onFocus: (input) => {
+          showAutocompleteMenu(input, sceneAutocompleteItems(trigger.chapterId?.trim()), "", (sceneId) => selectMovementTarget(input, sceneId), "No matching scenes");
+        },
+        onInput: (input) => {
+          showAutocompleteMenu(input, sceneAutocompleteItems(trigger.chapterId?.trim()), input.value, (sceneId) => selectMovementTarget(input, sceneId), "No matching scenes");
+        },
+      } : {})
     );
-    if (trigger.type === "movement") {
-      targetDatalist = movementTargetDatalist(targetDatalistId, trigger);
-      card.appendChild(targetDatalist);
-    }
   }
 
   if (trigger.type === "movement") {
+    const selectMovementChapter = (input, chapterId) => {
+      recordHistory();
+      input.value = chapterId;
+      trigger.chapterId = chapterId;
+      hideAutocompleteMenu();
+      markDirty();
+      renderGraph();
+    };
     card.appendChild(
       field("chapterId", trigger.chapterId, (value) => {
         if (value.trim()) trigger.chapterId = value.trim();
         else delete trigger.chapterId;
         markDirty();
-        if (targetDatalist) fillMovementTargetDatalist(targetDatalist, trigger);
+        hideAutocompleteMenu();
         renderGraph();
-      }, { list: "chapterIds" })
+      }, {
+        onFocus: (input) => {
+          showAutocompleteMenu(input, chapterAutocompleteItems(), "", (chapterId) => selectMovementChapter(input, chapterId), "No matching chapters");
+        },
+        onInput: (input) => {
+          showAutocompleteMenu(input, chapterAutocompleteItems(), input.value, (chapterId) => selectMovementChapter(input, chapterId), "No matching chapters");
+        },
+      })
     );
   }
 
   const actions = document.createElement("div");
   actions.className = "card-actions";
-  if (state.editorView.singleLine) {
-    actions.appendChild(button("Collapse", () => setRowExpanded(scene, "trigger", actionIndex, index, false)));
+  if (!isMovementTrigger(trigger)) {
+    actions.appendChild(button("Duplicate", () => duplicateTrigger(scene, action, actionIndex, index)));
   }
   actions.append(
     button("Up", () => moveArrayItem(action.triggers, index, -1)),
     button("Down", () => moveArrayItem(action.triggers, index, 1)),
-    button("Remove", () => {
-      const references = ["add_flag", "remove_flag"].includes(trigger.type)
-        ? flagReferences([trigger.target], trigger)
-        : [];
-      const extra = trigger.type === "movement"
-        ? `\n\nThis removes movement to ${trigger.chapterId ? `${trigger.chapterId}/` : ""}${trigger.target || "missing target"}.`
-        : "";
-      if (!confirmDeletion(`trigger ${index + 1} in action ${actionIndex + 1}`, references, extra)) return;
-      recordHistory();
-      action.triggers.splice(index, 1);
-      markDirty();
-      renderEditor();
-      renderGraph();
-    }, "danger")
+    button("Remove", () => removeTrigger(action, actionIndex, trigger, index), "danger")
   );
   card.appendChild(actions);
   return card;
@@ -1891,12 +2335,32 @@ const renderAction = (scene, action, index) => {
     return compactRow(
       `${index + 1}. ${compactText(action.text, "Empty action")}`,
       [...actionTriggerSummaries(action), ...visibilitySummary(action)],
-      () => setRowExpanded(scene, "action", index, undefined, true)
+      () => setRowExpanded(scene, "action", index, undefined, true),
+      (event) => editorItemContextMenu(event, [
+        { label: "Expand", onClick: () => setRowExpanded(scene, "action", index, undefined, true) },
+        { label: "Duplicate", onClick: () => duplicateAction(scene, index) },
+        { label: "Add Trigger", onClick: () => addTrigger(scene, action, index) },
+        { label: "Move Up", onClick: () => moveArrayItem(scene.actions, index, -1), disabled: index === 0 },
+        { label: "Move Down", onClick: () => moveArrayItem(scene.actions, index, 1), disabled: index === scene.actions.length - 1 },
+        { label: "Remove", onClick: () => removeAction(scene, action, index), danger: true },
+      ])
     );
   }
 
   const card = document.createElement("div");
   card.className = "card";
+  card.appendChild(cardHeader(
+    `Action ${index + 1}`,
+    state.editorView.singleLine ? () => setRowExpanded(scene, "action", index, undefined, false) : null,
+    (event) => editorItemContextMenu(event, [
+      state.editorView.singleLine && { label: "Collapse", onClick: () => setRowExpanded(scene, "action", index, undefined, false) },
+      { label: "Duplicate", onClick: () => duplicateAction(scene, index) },
+      { label: "Add Trigger", onClick: () => addTrigger(scene, action, index) },
+      { label: "Move Up", onClick: () => moveArrayItem(scene.actions, index, -1), disabled: index === 0 },
+      { label: "Move Down", onClick: () => moveArrayItem(scene.actions, index, 1), disabled: index === scene.actions.length - 1 },
+      { label: "Remove", onClick: () => removeAction(scene, action, index), danger: true },
+    ])
+  ));
   card.appendChild(
     field("Action text", action.text, (value) => {
       action.text = value;
@@ -1907,28 +2371,20 @@ const renderAction = (scene, action, index) => {
   renderVisibilityFields(card, action);
 
   const triggerHeader = document.createElement("div");
-  triggerHeader.className = "section-header";
+  triggerHeader.className = "section-header nested-section-header";
   const triggerTitle = document.createElement("h3");
   triggerTitle.textContent = "Triggers";
   triggerHeader.append(
     triggerTitle,
-    groupToggle(scene, `action:${index}:triggers`, "Triggers"),
-    button("Add Trigger", () => {
-      recordHistory();
-      action.triggers = action.triggers || [];
-      action.triggers.push({ type: "movement", target: "" });
-      expandNewRow(scene, "trigger", index, action.triggers.length - 1);
-      markDirty();
-      renderEditor();
-      renderGraph();
-    })
+    button("Add Trigger", () => addTrigger(scene, action, index))
   );
   card.appendChild(triggerHeader);
 
   if (isGroupCollapsed(scene, `action:${index}:triggers`)) {
     const summary = document.createElement("div");
     summary.className = "collapsed-summary";
-    summary.textContent = `${(action.triggers || []).length} triggers hidden`;
+    summary.textContent = `${(action.triggers || []).length} triggers hidden. Click to show.`;
+    summary.addEventListener("click", () => setGroupCollapsed(scene, `action:${index}:triggers`, false));
     card.appendChild(summary);
   } else {
     (action.triggers || []).forEach((trigger, triggerIndex) => {
@@ -1938,23 +2394,11 @@ const renderAction = (scene, action, index) => {
 
   const actions = document.createElement("div");
   actions.className = "card-actions";
-  if (state.editorView.singleLine) {
-    actions.appendChild(button("Collapse", () => setRowExpanded(scene, "action", index, undefined, false)));
-  }
   actions.append(
+    button("Duplicate", () => duplicateAction(scene, index)),
     button("Up", () => moveArrayItem(scene.actions, index, -1)),
     button("Down", () => moveArrayItem(scene.actions, index, 1)),
-    button("Remove", () => {
-      const references = flagReferences(flagsChangedByTriggers(action.triggers), action);
-      const triggerDetails = (action.triggers || []).map(shortTriggerSummary).join("; ");
-      const extra = triggerDetails ? `\n\nThis action contains: ${triggerDetails}.` : "";
-      if (!confirmDeletion(`action ${index + 1} in ${scene.id}`, references, extra)) return;
-      recordHistory();
-      scene.actions.splice(index, 1);
-      markDirty();
-      renderEditor();
-      renderGraph();
-    }, "danger")
+    button("Remove", () => removeAction(scene, action, index), "danger")
   );
   card.appendChild(actions);
   return card;
@@ -1965,6 +2409,7 @@ const renderStartEditor = () => {
   renderStartSceneIdDatalist();
   editorEl.innerHTML = "";
   previewEl.innerHTML = '<div class="empty-state">Start config has no scene preview.</div>';
+  saveEditorSelection();
 
   const header = document.createElement("div");
   header.className = "section-header";
@@ -1975,18 +2420,49 @@ const renderStartEditor = () => {
 
   const fields = document.createElement("div");
   fields.className = "field-row";
+  const selectStartChapter = (input, chapterId) => {
+    recordHistory();
+    input.value = chapterId;
+    state.chapter.chapterId = chapterId;
+    hideAutocompleteMenu();
+    markDirty();
+    renderStartSceneIdDatalist();
+    renderGraph({ relayout: true });
+  };
+  const selectStartScene = (input, sceneId) => {
+    recordHistory();
+    input.value = sceneId;
+    state.chapter.sceneId = sceneId;
+    hideAutocompleteMenu();
+    markDirty();
+    renderGraph({ relayout: true });
+  };
   fields.append(
     field("Starting chapter", state.chapter.chapterId, (value) => {
       state.chapter.chapterId = value.trim();
       markDirty();
       renderStartSceneIdDatalist();
       renderGraph({ relayout: true });
-    }, { list: "chapterIds" }),
+    }, {
+      onFocus: (input) => {
+        showAutocompleteMenu(input, chapterAutocompleteItems(), "", (chapterId) => selectStartChapter(input, chapterId), "No matching chapters");
+      },
+      onInput: (input) => {
+        showAutocompleteMenu(input, chapterAutocompleteItems(), input.value, (chapterId) => selectStartChapter(input, chapterId), "No matching chapters");
+      },
+    }),
     field("Starting scene", state.chapter.sceneId, (value) => {
       state.chapter.sceneId = value.trim();
       markDirty();
       renderGraph({ relayout: true });
-    }, { list: "startSceneIds" })
+    }, {
+      onFocus: (input) => {
+        showAutocompleteMenu(input, sceneAutocompleteItems(state.chapter.chapterId), "", (sceneId) => selectStartScene(input, sceneId), "No matching scenes");
+      },
+      onInput: (input) => {
+        showAutocompleteMenu(input, sceneAutocompleteItems(state.chapter.chapterId), input.value, (sceneId) => selectStartScene(input, sceneId), "No matching scenes");
+      },
+    })
   );
   editorEl.appendChild(fields);
 
@@ -2015,6 +2491,7 @@ const renderEditor = () => {
     renderPreview();
     return;
   }
+  saveEditorSelection();
 
   const title = document.createElement("div");
   title.className = "section-header";
@@ -2050,6 +2527,7 @@ const renderEditor = () => {
       const previousId = scene.id;
       scene.id = value.trim();
       state.selectedSceneId = scene.id;
+      saveEditorSelection();
       state.chapter.scenes.forEach((item) => {
         item.actions.forEach((action) => {
           (action.triggers || []).forEach((trigger) => {
@@ -2083,7 +2561,6 @@ const renderEditor = () => {
   paragraphsTitle.textContent = "Paragraphs";
   paragraphsHeader.append(
     paragraphsTitle,
-    groupToggle(scene, "paragraphs", "Paragraphs"),
     button("Add Paragraph", () => {
       recordHistory();
       scene.paragraphs.push("");
@@ -2096,7 +2573,8 @@ const renderEditor = () => {
   if (isGroupCollapsed(scene, "paragraphs")) {
     const summary = document.createElement("div");
     summary.className = "collapsed-summary";
-    summary.textContent = `${scene.paragraphs.length} paragraphs hidden`;
+    summary.textContent = `${scene.paragraphs.length} paragraphs hidden. Click to show.`;
+    summary.addEventListener("click", () => setGroupCollapsed(scene, "paragraphs", false));
     paragraphs.appendChild(summary);
   } else {
     scene.paragraphs.forEach((paragraph, index) => {
@@ -2113,7 +2591,6 @@ const renderEditor = () => {
   actionsTitle.textContent = "Actions";
   actionsHeader.append(
     actionsTitle,
-    groupToggle(scene, "actions", "Actions"),
     button("Add Action", () => {
       recordHistory();
       scene.actions.push({ text: "", triggers: [] });
@@ -2127,7 +2604,8 @@ const renderEditor = () => {
   if (isGroupCollapsed(scene, "actions")) {
     const summary = document.createElement("div");
     summary.className = "collapsed-summary";
-    summary.textContent = `${scene.actions.length} actions hidden`;
+    summary.textContent = `${scene.actions.length} actions hidden. Click to show.`;
+    summary.addEventListener("click", () => setGroupCollapsed(scene, "actions", false));
     actions.appendChild(summary);
   } else {
     scene.actions.forEach((action, index) => {
@@ -2189,7 +2667,10 @@ const loadChapters = async () => {
   renderChapterIdDatalist();
 
   if (chapters.length > 0) {
-    await loadChapter(chapters[0].id);
+    const savedSelection = loadEditorSelection();
+    const initialChapter = chapters.find((chapter) => chapter.id === savedSelection?.chapterId) || chapters[0];
+    chapterSelect.value = initialChapter.id;
+    await loadChapter(initialChapter.id, savedSelection?.sceneId);
   } else {
     setStatus("No chapters found", "error");
   }
@@ -2207,6 +2688,23 @@ graphLayoutSelect.addEventListener("change", () => {
   state.graphLayoutMode = graphLayoutSelect.value;
   renderGraph({ relayout: true });
 });
+
+previewLayoutSelect.addEventListener("change", () => {
+  state.panelLayout.mode = previewLayoutSelect.value;
+  applyPanelLayout({ persist: true });
+});
+
+resetPanelLayoutButton.addEventListener("click", resetPanelLayout);
+
+graphWorkspaceSplitter.addEventListener("pointerdown", (event) => startPanelResize("graphWorkspace", event));
+graphWorkspaceSplitter.addEventListener("pointermove", updatePanelSplit);
+graphWorkspaceSplitter.addEventListener("pointerup", stopPanelResize);
+graphWorkspaceSplitter.addEventListener("pointercancel", stopPanelResize);
+
+editorPreviewSplitter.addEventListener("pointerdown", (event) => startPanelResize("editorPreview", event));
+editorPreviewSplitter.addEventListener("pointermove", updatePanelSplit);
+editorPreviewSplitter.addEventListener("pointerup", stopPanelResize);
+editorPreviewSplitter.addEventListener("pointercancel", stopPanelResize);
 
 safeDeletionCheckbox.addEventListener("change", () => {
   state.safeDeletion = safeDeletionCheckbox.checked;
@@ -2350,11 +2848,19 @@ deployButton.addEventListener("click", async () => {
   }
 });
 
+loadPanelLayout();
+applyPanelLayout();
+
 loadChapters().catch((error) => {
   setStatus(error.message, "error");
 });
 
 window.addEventListener("resize", resizeGraph);
+window.addEventListener("mousedown", (event) => {
+  if (!state.autocompleteMenu) return;
+  if (event.target === state.autocompleteInput || state.autocompleteMenu.contains(event.target)) return;
+  hideAutocompleteMenu();
+});
 window.addEventListener("beforeunload", (event) => {
   if (!state.dirty) return;
   event.preventDefault();
@@ -2362,5 +2868,8 @@ window.addEventListener("beforeunload", (event) => {
 });
 window.addEventListener("click", hideContextMenu);
 window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") hideContextMenu();
+  if (event.key === "Escape") {
+    hideContextMenu();
+    hideAutocompleteMenu();
+  }
 });
