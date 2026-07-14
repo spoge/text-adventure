@@ -62,7 +62,7 @@
           "triggers": [
             {
               "type": "movement",
-              "target": "village_dock_1"
+              "target": "village_docks_1"
             }
           ],
           "showAny": [
@@ -337,7 +337,7 @@
     },
     {
       "id": "village_shop_2",
-      "name": "Village - Shop - Secret Quest",
+      "name": "Shopkeeper - Secret Quest",
       "paragraphs": [
         "\"Oooh, askin' about the secret quest, are ya? Well, ya seem like a decent fellow. Let's see if ya're up'n'to the task.\"",
         "The shopkeeper reaches down. A small package is presents itself to you on the vendors table.",
@@ -418,8 +418,8 @@
       ]
     },
     {
-      "id": "village_dock_1",
-      "name": "Village - Dock",
+      "id": "village_docks_1",
+      "name": "Village - Docks",
       "paragraphs": [
         "The grand docks of the Village. It fits two ships. Two very small fishing ships. Like row boat small."
       ],
@@ -437,7 +437,7 @@
     },
     {
       "id": "village_shop_3",
-      "name": "Village - Shop - Secret Quest",
+      "name": "Shopkeeper - Secret Quest",
       "paragraphs": [
         {
           "text": "You reluctantly agree to the job. ",
