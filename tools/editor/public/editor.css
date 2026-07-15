@@ -229,7 +229,50 @@ textarea {
 
 #graph {
   height: 100%;
+  position: relative;
   width: 100%;
+}
+
+.graph-edge-label-layer {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 10;
+}
+
+.graph-edge-label {
+  background: rgba(20, 24, 32, 0.9);
+  border: 1px solid rgba(123, 135, 152, 0.55);
+  border-radius: 5px;
+  color: #c4ccd7;
+  cursor: grab;
+  font-size: 10px;
+  line-height: 1.25;
+  max-width: 120px;
+  padding: 4px 5px;
+  pointer-events: auto;
+  position: absolute;
+  text-align: center;
+  touch-action: none;
+  transform: translate(-50%, -50%);
+  user-select: none;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.graph-edge-label:hover,
+.graph-edge-label.dragging {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.graph-edge-label.dragging {
+  cursor: grabbing;
+}
+
+body.graph-edge-label-dragging {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .workspace-panel {

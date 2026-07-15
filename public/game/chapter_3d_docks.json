@@ -1,0 +1,115 @@
+{
+  "name": "Chapter 3d Docks",
+  "scenes": [
+    {
+      "id": "docks_2",
+      "name": "Village docks - Scary man",
+      "paragraphs": [
+        "\"Oi... What'cha lookin' at?\"",
+        "His arms are crossed. Very muscley, very hairy, very tattooy.",
+        {
+          "text": "> You offer him the package. He looks strangely at you. \"I ain't expectin' no package.\"",
+          "showAny": [
+            "village_docks_talked_to_scary_man"
+          ]
+        },
+        {
+          "text": "\"Talk to the skinny fella back there. I reckon' he knows what you need.\" ",
+          "showAny": [
+            "village_docks_talked_to_scary_man"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "text": "Offer him the \"secret\" package",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_docks_talked_to_scary_man"
+            }
+          ],
+          "hideAny": [
+            "village_docks_talked_to_scary_man"
+          ]
+        },
+        {
+          "text": "Go to the skinny fella",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "docks_3"
+            }
+          ],
+          "showAny": [
+            "village_docks_talked_to_scary_man"
+          ]
+        },
+        {
+          "text": "Go back",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "docks_1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "docks_1",
+      "name": "Village - Docks",
+      "paragraphs": [
+        "The grand docks of the Village. It fits two ships. Two very small fishing ships. Like row boat small."
+      ],
+      "actions": [
+        {
+          "text": "Talk to the scary looking man",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "docks_2"
+            }
+          ]
+        },
+        {
+          "text": "Go to the skinny fella",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "docks_3"
+            }
+          ]
+        },
+        {
+          "text": "Go back to Village Square",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square",
+              "chapterId": "chapter_3a_village"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "docks_3",
+      "name": "Village Docks - Skinny fella",
+      "paragraphs": [
+        "A skinny fella skulks around the corner. A rat like creature. Yeah is creepy alright."
+      ],
+      "actions": [
+        {
+          "text": "Go back",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "docks_1"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

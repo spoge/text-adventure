@@ -65,7 +65,8 @@
           "triggers": [
             {
               "type": "movement",
-              "target": "village_docks_1"
+              "target": "docks_1",
+              "chapterId": "chapter_3d_docks"
             }
           ],
           "showAny": [
@@ -127,24 +128,6 @@
         },
         {
           "text": "Back to Village Square",
-          "triggers": [
-            {
-              "type": "movement",
-              "target": "village_square"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "village_docks_1",
-      "name": "Village - Docks",
-      "paragraphs": [
-        "The grand docks of the Village. It fits two ships. Two very small fishing ships. Like row boat small."
-      ],
-      "actions": [
-        {
-          "text": "Go to Village Square",
           "triggers": [
             {
               "type": "movement",

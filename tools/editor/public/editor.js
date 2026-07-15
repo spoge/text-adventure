@@ -17,6 +17,10 @@ const graphNodeWidth = 150;
 const graphOrganicNodeRepulsion = 14000;
 const graphOrganicIdealEdgeLength = 280;
 const graphOrganicNodeOverlap = 70;
+const graphEdgeLabelDefaultPercent = 50;
+const graphEdgeLabelMinPercent = 10;
+const graphEdgeLabelMaxPercent = 90;
+const graphEdgeLabelMaxOffset = 72;
 const startChapterId = "-start-";
 const panelLayoutStorageKey = "textAdventureEditorPanelLayout";
 const editorSelectionStorageKey = "textAdventureEditorSelection";
@@ -33,6 +37,9 @@ const state = {
   graphLayoutMode: "auto",
   graphRenderedLayoutKey: "",
   graphLayoutSaveTimer: null,
+  graphEdgeLabelPositions: {},
+  graphEdgeLabelLayer: null,
+  graphEdgeLabelDrag: null,
   isRestoringGraphLayout: false,
   isClampingGraphPan: false,
   savedSnapshot: "",
@@ -387,6 +394,29 @@ const graphTextPreview = (value, maxLength = 48) => {
 const externalNodeId = (chapterId, sceneId) => `external:${chapterId}:${sceneId}`;
 const externalChapterNodeId = (chapterId) => `external-chapter:${chapterId}`;
 
+const withBidirectionalEdgeCurves = (edges) => {
+  const pairCounts = new Map();
+  edges.forEach((edge) => {
+    const source = edge.data?.source;
+    const target = edge.data?.target;
+    if (!source || !target) return;
+    pairCounts.set(`${source}\u0000${target}`, (pairCounts.get(`${source}\u0000${target}`) || 0) + 1);
+  });
+
+  return edges.map((edge) => {
+    const source = edge.data?.source;
+    const target = edge.data?.target;
+    if (!source || !target || !pairCounts.has(`${target}\u0000${source}`)) return edge;
+    return {
+      ...edge,
+      data: {
+        ...edge.data,
+        controlPointDistance: -32,
+      },
+    };
+  });
+};
+
 const updateExternalNodeLabel = (node) => {
   if (node.start === "yes") {
     node.label = "Start";
@@ -587,7 +617,7 @@ const graphElements = () => {
     });
 
   const externalNodes = [...externalNodesById.values()].map((data) => ({ data }));
-  return [...nodes, ...externalNodes, ...edges, ...inboundEdges];
+  return [...nodes, ...externalNodes, ...withBidirectionalEdgeCurves([...edges, ...inboundEdges])];
 };
 
 const nodePositions = () => {
@@ -612,6 +642,31 @@ const validPoint = (value) =>
   Number.isFinite(value.x) &&
   Number.isFinite(value.y);
 
+const sanitizeEdgeLabelPositions = (positions) => {
+  const sanitized = {};
+  Object.entries(positions || {}).forEach(([id, position]) => {
+    if (typeof id !== "string") return;
+    if (typeof position === "number") {
+      sanitized[id] = {
+        percent: clamp(position, graphEdgeLabelMinPercent, graphEdgeLabelMaxPercent),
+        offset: 0,
+      };
+      return;
+    }
+    if (position && typeof position === "object") {
+      const percent = Number(position.percent);
+      const offset = Number(position.offset);
+      if (Number.isFinite(percent)) {
+        sanitized[id] = {
+          percent: clamp(percent, graphEdgeLabelMinPercent, graphEdgeLabelMaxPercent),
+          offset: Number.isFinite(offset) ? clamp(offset, -graphEdgeLabelMaxOffset, graphEdgeLabelMaxOffset) : 0,
+        };
+      }
+    }
+  });
+  return sanitized;
+};
+
 const sanitizeGraphLayout = (layout) => {
   if (!layout || typeof layout !== "object") return null;
   const positions = {};
@@ -623,6 +678,7 @@ const sanitizeGraphLayout = (layout) => {
   const zoom = Number(layout.zoom);
   return {
     positions,
+    edgeLabelPositions: sanitizeEdgeLabelPositions(layout.edgeLabelPositions),
     pan: validPoint(layout.pan) ? { x: layout.pan.x, y: layout.pan.y } : null,
     zoom: Number.isFinite(zoom) ? clamp(zoom, graphMinZoom, graphMaxZoom) : null,
   };
@@ -685,6 +741,7 @@ const saveGraphLayout = (key = state.graphRenderedLayoutKey || graphLayoutKey())
   const store = loadGraphLayoutStore();
   store.layouts[key] = {
     positions: nodePositions(),
+    edgeLabelPositions: sanitizeEdgeLabelPositions(state.graphEdgeLabelPositions),
     pan: state.graph.pan(),
     zoom: state.graph.zoom(),
   };
@@ -752,6 +809,7 @@ const resizeGraph = () => {
   requestAnimationFrame(() => {
     if (!state.graph) return;
     state.graph.resize();
+    updateGraphEdgeLabelPositions();
     clampGraphPan();
   });
 };
@@ -917,7 +975,167 @@ const fitGraph = () => {
   if (!state.graph) return;
   state.graph.resize();
   state.graph.fit(undefined, 60);
+  updateGraphEdgeLabelPositions();
   clampGraphPan();
+};
+
+const graphEdgeLabelPosition = (edgeId) => {
+  const position = state.graphEdgeLabelPositions[edgeId];
+  if (!position || typeof position !== "object") {
+    return { percent: graphEdgeLabelDefaultPercent, offset: 0 };
+  }
+  const percent = Number(position.percent);
+  const offset = Number(position.offset);
+  return {
+    percent: Number.isFinite(percent)
+      ? clamp(percent, graphEdgeLabelMinPercent, graphEdgeLabelMaxPercent)
+      : graphEdgeLabelDefaultPercent,
+    offset: Number.isFinite(offset)
+      ? clamp(offset, -graphEdgeLabelMaxOffset, graphEdgeLabelMaxOffset)
+      : 0,
+  };
+};
+
+const ensureGraphEdgeLabelLayer = () => {
+  const container = document.getElementById("graph");
+  if (!container) return null;
+  if (state.graphEdgeLabelLayer?.parentElement === container) return state.graphEdgeLabelLayer;
+  state.graphEdgeLabelLayer?.remove();
+  const layer = document.createElement("div");
+  layer.className = "graph-edge-label-layer";
+  container.appendChild(layer);
+  state.graphEdgeLabelLayer = layer;
+  return layer;
+};
+
+const removeGraphEdgeLabelLayer = () => {
+  state.graphEdgeLabelLayer?.remove();
+  state.graphEdgeLabelLayer = null;
+  state.graphEdgeLabelDrag = null;
+};
+
+const edgeLabelPoint = (edge) => {
+  const source = edge.source().renderedPosition();
+  const target = edge.target().renderedPosition();
+  const { percent, offset } = graphEdgeLabelPosition(edge.id());
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const normal = {
+    x: -dy / length,
+    y: dx / length,
+  };
+  const along = percent / 100;
+  return {
+    x: source.x + dx * along + normal.x * offset,
+    y: source.y + dy * along + normal.y * offset,
+  };
+};
+
+const updateGraphEdgeLabelPositions = () => {
+  if (!state.graphEdgeLabelLayer || !state.graph) return;
+  state.graphEdgeLabelLayer.querySelectorAll(".graph-edge-label").forEach((label) => {
+    const edge = state.graph.getElementById(label.dataset.edgeId || "");
+    if (!edge.length) {
+      label.remove();
+      return;
+    }
+    const point = edgeLabelPoint(edge);
+    label.style.left = `${point.x}px`;
+    label.style.top = `${point.y}px`;
+  });
+};
+
+const renderGraphEdgeLabels = () => {
+  if (!state.graph) return;
+  const layer = ensureGraphEdgeLabelLayer();
+  if (!layer) return;
+  layer.innerHTML = "";
+  state.graph.edges().forEach((edge) => {
+    const labelText = edge.data("label");
+    if (!labelText) return;
+    const label = document.createElement("div");
+    label.className = "graph-edge-label";
+    label.dataset.edgeId = edge.id();
+    label.textContent = labelText;
+    label.title = "Drag to move this label along the edge";
+    label.addEventListener("pointerdown", startGraphEdgeLabelDrag);
+    label.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const graphEdge = state.graph.getElementById(edge.id());
+      showEdgeContextMenu(event, graphEdge);
+    });
+    layer.appendChild(label);
+  });
+  updateGraphEdgeLabelPositions();
+};
+
+const updateGraphEdgeLabelDrag = (event) => {
+  if (!state.graphEdgeLabelDrag || !state.graph) return;
+  const { edgeId } = state.graphEdgeLabelDrag;
+  const edge = state.graph.getElementById(edgeId);
+  if (!edge.length) return;
+
+  const rect = state.graph.container().getBoundingClientRect();
+  const pointer = {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+  };
+  const source = edge.source().renderedPosition();
+  const target = edge.target().renderedPosition();
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq === 0) return;
+
+  const projected = ((pointer.x - source.x) * dx + (pointer.y - source.y) * dy) / lengthSq;
+  const length = Math.sqrt(lengthSq);
+  const normal = {
+    x: -dy / length,
+    y: dx / length,
+  };
+  const offset = (pointer.x - source.x) * normal.x + (pointer.y - source.y) * normal.y;
+  const percent = clamp(
+    projected * 100,
+    graphEdgeLabelMinPercent,
+    graphEdgeLabelMaxPercent
+  );
+  state.graphEdgeLabelPositions[edgeId] = {
+    percent: Math.round(percent * 10) / 10,
+    offset: Math.round(clamp(offset, -graphEdgeLabelMaxOffset, graphEdgeLabelMaxOffset) * 10) / 10,
+  };
+  updateGraphEdgeLabelPositions();
+};
+
+function startGraphEdgeLabelDrag(event) {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  hideContextMenu();
+  state.graphEdgeLabelDrag = {
+    edgeId: event.currentTarget.dataset.edgeId,
+    pointerId: event.pointerId,
+    label: event.currentTarget,
+  };
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  event.currentTarget.classList.add("dragging");
+  document.body.classList.add("graph-edge-label-dragging");
+  updateGraphEdgeLabelDrag(event);
+}
+
+const stopGraphEdgeLabelDrag = () => {
+  if (!state.graphEdgeLabelDrag) return;
+  const { label, pointerId } = state.graphEdgeLabelDrag;
+  try {
+    label.releasePointerCapture?.(pointerId);
+  } catch (error) {
+    console.warn("Could not release edge label pointer capture", error);
+  }
+  label.classList.remove("dragging");
+  document.body.classList.remove("graph-edge-label-dragging");
+  state.graphEdgeLabelDrag = null;
+  scheduleSaveGraphLayout();
 };
 
 const graphComplexity = () => {
@@ -1103,12 +1321,13 @@ const showNodeContextMenu = (event) => {
   ]);
 };
 
-const showEdgeContextMenu = (event) => {
-  const isLocalMovement = Boolean(localEdgeParts(event.target.id()));
+const showEdgeContextMenu = (event, edge = event.target) => {
+  const edgeId = typeof edge.id === "function" ? edge.id() : "";
+  const isLocalMovement = Boolean(localEdgeParts(edgeId));
   showContextMenu(event, [
-    { label: "Edit Trigger", disabled: !isLocalMovement, onClick: () => openEdgeTrigger(event.target.id()) },
-    { label: "Open Target", disabled: !isLocalMovement, onClick: () => openEdgeTarget(event.target) },
-    { label: "Delete Trigger", disabled: !isLocalMovement, danger: true, onClick: () => deleteEdgeTrigger(event.target.id()) },
+    { label: "Edit Trigger", disabled: !isLocalMovement, onClick: () => openEdgeTrigger(edgeId) },
+    { label: "Open Target", disabled: !isLocalMovement, onClick: () => openEdgeTarget(edge) },
+    { label: "Delete Trigger", disabled: !isLocalMovement, danger: true, onClick: () => deleteEdgeTrigger(edgeId) },
   ]);
 };
 
@@ -1157,6 +1376,10 @@ const renderGraph = ({ relayout = false } = {}) => {
   ensureGraphLayoutExtensions();
   const layoutKey = graphLayoutKey();
   const savedLayout = relayout ? null : loadGraphLayout(layoutKey);
+  state.graphEdgeLabelPositions = sanitizeEdgeLabelPositions(
+    savedLayout?.edgeLabelPositions ||
+    (state.graphRenderedLayoutKey === layoutKey ? state.graphEdgeLabelPositions : {})
+  );
   const elements = applySavedPositionsToElements(graphElements(), savedLayout);
   let ranLayout = false;
   if (!state.graph) {
@@ -1250,11 +1473,13 @@ const renderGraph = ({ relayout = false } = {}) => {
           selector: "edge",
           style: {
             "curve-style": "bezier",
+            "control-point-distances": "data(controlPointDistance)",
+            "control-point-weights": 0.5,
             "target-arrow-shape": "triangle",
             "line-color": "#7b8798",
             "target-arrow-color": "#7b8798",
             color: "#c4ccd7",
-            label: "data(label)",
+            label: "",
             "font-size": 10,
             "text-background-color": "#141820",
             "text-background-opacity": 0.85,
@@ -1311,10 +1536,15 @@ const renderGraph = ({ relayout = false } = {}) => {
       showGraphContextMenu(event);
     });
     state.graph.on("pan zoom", () => {
+      updateGraphEdgeLabelPositions();
       clampGraphPan();
       scheduleSaveGraphLayout();
     });
-    state.graph.on("dragfree layoutstop", scheduleSaveGraphLayout);
+    state.graph.on("position", "node", updateGraphEdgeLabelPositions);
+    state.graph.on("dragfree layoutstop", () => {
+      updateGraphEdgeLabelPositions();
+      scheduleSaveGraphLayout();
+    });
   } else {
     const previousLayoutKey = state.graphRenderedLayoutKey;
     const positions = previousLayoutKey === layoutKey ? nodePositions() : savedLayout?.positions || {};
@@ -1331,6 +1561,7 @@ const renderGraph = ({ relayout = false } = {}) => {
   }
 
   if (savedLayout) applySavedGraphLayout(savedLayout);
+  renderGraphEdgeLabels();
   resizeGraph();
   clampGraphPan();
   if (ranLayout) fitGraphAfterLayout();
@@ -2897,6 +3128,7 @@ const loadChapter = async (chapterId, selectedSceneId) => {
     renderGraph();
   } else if (state.graph) {
     state.graph.elements().remove();
+    removeGraphEdgeLabelLayer();
     state.graphRenderedLayoutKey = "";
   }
 };
@@ -3267,6 +3499,9 @@ loadChapters().catch((error) => {
 });
 
 window.addEventListener("resize", resizeGraph);
+window.addEventListener("pointermove", updateGraphEdgeLabelDrag);
+window.addEventListener("pointerup", stopGraphEdgeLabelDrag);
+window.addEventListener("pointercancel", stopGraphEdgeLabelDrag);
 window.addEventListener("mousedown", (event) => {
   if (!state.autocompleteMenu) return;
   if (event.target === state.autocompleteInput || state.autocompleteMenu.contains(event.target)) return;
