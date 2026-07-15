@@ -1,4 +1,5 @@
 {
+  "name": "Shipwreck",
   "scenes": [
     {
       "id": "shipwreck_1",
@@ -50,17 +51,24 @@
         "You realize that you don't have much time. The ship is sinking and you only have time to grab some essentials.",
         {
           "text": "> You hold the sword in your hand. You can't pick up anything else.",
-          "showAny": ["have_sword"]
+          "showAny": [
+            "have_sword"
+          ]
         },
         {
           "text": "> You hold the bag of food. You can't pick up anything else.",
-          "showAny": ["have_food"]
+          "showAny": [
+            "have_food"
+          ]
         }
       ],
       "actions": [
         {
           "text": "Take sword",
-          "hideAny": ["have_sword", "have_food"],
+          "hideAny": [
+            "have_sword",
+            "have_food"
+          ],
           "triggers": [
             {
               "type": "add_flag",
@@ -74,7 +82,9 @@
         },
         {
           "text": "Drop sword",
-          "showAny": ["have_sword"],
+          "showAny": [
+            "have_sword"
+          ],
           "triggers": [
             {
               "type": "remove_flag",
@@ -88,7 +98,10 @@
         },
         {
           "text": "Take bag of food",
-          "hideAny": ["have_food", "have_sword"],
+          "hideAny": [
+            "have_food",
+            "have_sword"
+          ],
           "triggers": [
             {
               "type": "add_flag",
@@ -102,7 +115,9 @@
         },
         {
           "text": "Drop bag of food",
-          "showAny": ["have_food"],
+          "showAny": [
+            "have_food"
+          ],
           "triggers": [
             {
               "type": "remove_flag",
@@ -116,7 +131,10 @@
         },
         {
           "text": "Go to the upper deck",
-          "showAny": ["have_food", "have_sword"],
+          "showAny": [
+            "have_food",
+            "have_sword"
+          ],
           "triggers": [
             {
               "type": "movement",
@@ -134,13 +152,17 @@
         "You see land in the distance, but you know you can't swim that far with all your newly picked up luggage.",
         {
           "text": "> You hold the plank. Looking at it you wonder if it can function as a makeshift raft?",
-          "showAny": ["have_plank"]
+          "showAny": [
+            "have_plank"
+          ]
         }
       ],
       "actions": [
         {
           "text": "Take plank",
-          "hideAny": ["have_plank"],
+          "hideAny": [
+            "have_plank"
+          ],
           "triggers": [
             {
               "type": "add_flag",
@@ -150,7 +172,9 @@
         },
         {
           "text": "Jump overboard with the plank",
-          "showAny": ["have_plank"],
+          "showAny": [
+            "have_plank"
+          ],
           "triggers": [
             {
               "type": "remove_flag",
@@ -159,7 +183,7 @@
             {
               "type": "movement",
               "target": "beach_1",
-              "chapterId": "chapter_2"
+              "chapterId": "chapter_2a_beach"
             }
           ]
         }

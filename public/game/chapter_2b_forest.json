@@ -1,4 +1,5 @@
 {
+  "name": "Forest",
   "scenes": [
     {
       "id": "forest_1",
@@ -23,7 +24,7 @@
             {
               "type": "movement",
               "target": "beach_3",
-              "chapterId": "chapter_2"
+              "chapterId": "chapter_2a_beach"
             }
           ]
         }
@@ -473,7 +474,7 @@
             {
               "type": "movement",
               "target": "village_forest_entrance",
-              "chapterId": "chapter_4"
+              "chapterId": "chapter_3a_village"
             }
           ]
         },

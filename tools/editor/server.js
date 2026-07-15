@@ -13,12 +13,59 @@ let deployInProgress = false;
 app.use(express.json({ limit: "5mb" }));
 app.use(express.static(staticDir));
 
-const isValidChapterId = (chapterId) => /^[-\w]+$/.test(chapterId);
 const startChapterId = "-start-";
+const reservedWindowsFilenames = new Set([
+  "con",
+  "prn",
+  "aux",
+  "nul",
+  "com1",
+  "com2",
+  "com3",
+  "com4",
+  "com5",
+  "com6",
+  "com7",
+  "com8",
+  "com9",
+  "lpt1",
+  "lpt2",
+  "lpt3",
+  "lpt4",
+  "lpt5",
+  "lpt6",
+  "lpt7",
+  "lpt8",
+  "lpt9",
+]);
+
+const chapterIdError = (chapterId, { allowStart = false } = {}) => {
+  if (typeof chapterId !== "string" || !chapterId.trim()) return "Chapter id is required";
+  if (chapterId !== chapterId.trim()) return "Chapter id cannot start or end with whitespace";
+  if (!/^[A-Za-z0-9_-]+$/.test(chapterId)) {
+    return "Chapter id can only contain letters, numbers, underscores, and hyphens";
+  }
+  if (chapterId.length > 100) return "Chapter id cannot be longer than 100 characters";
+  if (chapterId === startChapterId && !allowStart) return "-start- is reserved for the start config";
+  if (chapterId !== startChapterId && reservedWindowsFilenames.has(chapterId.toLowerCase())) {
+    return "Chapter id is a reserved Windows filename";
+  }
+  return "";
+};
+
+const isValidChapterId = (chapterId, options) => !chapterIdError(chapterId, options);
+
+const defaultChapterName = (chapterId) =>
+  chapterId
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => `${part[0]?.toUpperCase() || ""}${part.slice(1)}`)
+    .join(" ") || "New Chapter";
 
 const chapterPath = (chapterId) => {
-  if (!isValidChapterId(chapterId)) {
-    const error = new Error("Invalid chapter id");
+  const idError = chapterIdError(chapterId, { allowStart: true });
+  if (idError) {
+    const error = new Error(idError);
     error.status = 400;
     throw error;
   }
@@ -64,6 +111,10 @@ const validateChapter = (chapter) => {
 
   if (!chapter || !Array.isArray(chapter.scenes)) {
     return ["Chapter must have a top-level scenes array"];
+  }
+
+  if (chapter.name !== undefined && typeof chapter.name !== "string") {
+    errors.push("Chapter name must be a string");
   }
 
   const sceneIds = new Set();
@@ -333,6 +384,7 @@ app.get("/api/chapters", async (_req, res, next) => {
         return {
           id: chapterId,
           file,
+          name: typeof json.name === "string" ? json.name : "",
           isStart: chapterId === startChapterId,
           hasScenes: Array.isArray(json.scenes),
           sceneCount: Array.isArray(json.scenes) ? json.scenes.length : 0,
@@ -352,8 +404,9 @@ app.get("/api/chapters", async (_req, res, next) => {
 app.post("/api/chapters", async (req, res, next) => {
   try {
     const chapterId = String(req.body?.chapterId || "").trim();
-    if (!isValidChapterId(chapterId) || chapterId === startChapterId) {
-      res.status(400).json({ error: "Invalid chapter id" });
+    const idError = chapterIdError(chapterId);
+    if (idError) {
+      res.status(400).json({ error: idError });
       return;
     }
     const filePath = chapterPath(chapterId);
@@ -362,6 +415,7 @@ app.post("/api/chapters", async (req, res, next) => {
       return;
     }
     await writeJson(filePath, {
+      name: String(req.body?.name || "").trim() || defaultChapterName(chapterId),
       scenes: [
         {
           id: "scene_1",
@@ -410,7 +464,7 @@ app.post("/api/chapters/:chapterId/restore", async (req, res, next) => {
 
     await Promise.all(
       affectedEntries.map(async (entry) => {
-        if (!isValidChapterId(entry?.id) || !entry?.json) return;
+        if (!isValidChapterId(entry?.id, { allowStart: true }) || !entry?.json) return;
         await writeJson(chapterPath(entry.id), entry.json);
       })
     );
@@ -573,7 +627,7 @@ app.post("/api/entries/restore", async (req, res, next) => {
     }
     await Promise.all(
       entries.map(async (entry) => {
-        if (!isValidChapterId(entry?.id) || !entry?.json) return;
+        if (!isValidChapterId(entry?.id, { allowStart: true }) || !entry?.json) return;
         const errors = entry.id === startChapterId
           ? validateStart(entry.json)
           : validateChapter(entry.json);
@@ -615,6 +669,106 @@ app.put("/api/chapters/:chapterId", async (req, res, next) => {
 
     await writeJson(filePath, req.body);
     res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/chapters/:chapterId/rename", async (req, res, next) => {
+  try {
+    const oldChapterId = req.params.chapterId;
+    const newChapterId = String(req.body?.chapterId || "").trim();
+    const name = String(req.body?.name || "").trim();
+
+    if (oldChapterId === startChapterId) {
+      res.status(400).json({ error: "Cannot rename start config" });
+      return;
+    }
+
+    const oldIdError = chapterIdError(oldChapterId);
+    if (oldIdError) {
+      res.status(400).json({ error: oldIdError });
+      return;
+    }
+
+    const newIdError = chapterIdError(newChapterId);
+    if (newIdError) {
+      res.status(400).json({ error: newIdError });
+      return;
+    }
+
+    const oldPath = chapterPath(oldChapterId);
+    if (!(await fileExists(oldPath))) {
+      res.status(404).json({ error: "Chapter not found" });
+      return;
+    }
+
+    const idChanged = oldChapterId !== newChapterId;
+    const newPath = chapterPath(newChapterId);
+    if (idChanged && (await fileExists(newPath))) {
+      res.status(409).json({ error: "Chapter already exists" });
+      return;
+    }
+
+    const analysis = await analyzeGame();
+    const entriesById = new Map(analysis.entries.map((entry) => [entry.id, { ...entry, json: cloneJson(entry.json) }]));
+    const chapterEntry = entriesById.get(oldChapterId);
+    if (!chapterEntry?.json?.scenes) {
+      res.status(404).json({ error: "Chapter not found" });
+      return;
+    }
+
+    chapterEntry.json.name = name || defaultChapterName(newChapterId);
+    const affectedEntries = [];
+    const rememberAffected = (entryId) => {
+      if (affectedEntries.some((entry) => entry.id === entryId)) return;
+      const original = analysis.entries.find((entry) => entry.id === entryId);
+      if (original) affectedEntries.push({ id: entryId, json: cloneJson(original.json) });
+    };
+    rememberAffected(oldChapterId);
+
+    if (idChanged) {
+      entriesById.forEach((entry) => {
+        if (!entry.json?.scenes) return;
+        let changed = false;
+        entry.json.scenes.forEach((scene) => {
+          (scene.actions || []).forEach((action) => {
+            (action.triggers || []).forEach((trigger) => {
+              if (trigger?.type === "movement" && trigger.chapterId === oldChapterId) {
+                trigger.chapterId = newChapterId;
+                changed = true;
+              }
+            });
+          });
+        });
+        if (changed) rememberAffected(entry.id);
+      });
+
+      const start = entriesById.get(startChapterId);
+      if (start?.json?.chapterId === oldChapterId) {
+        start.json.chapterId = newChapterId;
+        rememberAffected(startChapterId);
+      }
+    }
+
+    const writes = [];
+    entriesById.forEach((entry, entryId) => {
+      if (entryId === oldChapterId) return;
+      if (!affectedEntries.some((affected) => affected.id === entryId)) return;
+      writes.push(writeJson(chapterPath(entryId), entry.json));
+    });
+    await Promise.all(writes);
+    await writeJson(oldPath, chapterEntry.json);
+    if (idChanged) await fs.rename(oldPath, newPath);
+
+    res.json({
+      ok: true,
+      oldChapterId,
+      chapterId: newChapterId,
+      name: chapterEntry.json.name,
+      idChanged,
+      affectedEntries,
+    });
   } catch (error) {
     next(error);
   }

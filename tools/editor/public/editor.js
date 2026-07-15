@@ -59,6 +59,7 @@ const state = {
       below: 58,
     },
   },
+  graphCrossChapterMode: "scene",
   panelResize: null,
 };
 
@@ -251,6 +252,15 @@ const renderChapterIdDatalist = () => {
 const chapterMetaById = (chapterId) =>
   state.chapters.find((chapter) => chapter.id === chapterId);
 
+const chapterDisplayName = (chapter) =>
+  chapter?.name?.trim() || chapter?.id || "Untitled chapter";
+
+const chapterOptionText = (chapter) => {
+  if (chapter.isStart) return `${chapter.id} (start)`;
+  const sceneLabel = chapter.sceneCount === 1 ? "scene" : "scenes";
+  return `${chapterDisplayName(chapter)} (${chapter.id}, ${chapter.sceneCount} ${sceneLabel})`;
+};
+
 const movementTargetScenes = (trigger) => {
   const chapterId = trigger.chapterId?.trim();
   if (!chapterId || chapterId === state.chapterId) return state.chapter?.scenes || [];
@@ -341,7 +351,7 @@ const chapterAutocompleteItems = () =>
     .filter((chapter) => chapter.hasScenes)
     .map((chapter) => ({
       value: chapter.id,
-      detail: `${chapter.sceneCount ?? chapter.scenes?.length ?? 0} scenes`,
+      detail: `${chapterDisplayName(chapter)}; ${chapter.sceneCount ?? chapter.scenes?.length ?? 0} scenes`,
     }));
 
 const renderStartSceneIdDatalist = () => {
@@ -371,10 +381,14 @@ const graphTextPreview = (value, maxLength = 48) => {
 };
 
 const externalNodeId = (chapterId, sceneId) => `external:${chapterId}:${sceneId}`;
+const externalChapterNodeId = (chapterId) => `external-chapter:${chapterId}`;
 
 const updateExternalNodeLabel = (node) => {
   if (node.start === "yes") {
     node.label = "Start";
+  } else if (node.grouped === "yes") {
+    const chapterName = chapterDisplayName(chapterMetaById(node.chapterId));
+    node.label = `Enter from ${chapterName}\n${node.linkCount} ${node.linkCount === 1 ? "link" : "links"}`;
   } else if (node.enter === "yes" && node.external === "yes") {
     node.both = "yes";
     node.label = `${node.chapterId}\n${node.sceneId}`;
@@ -481,14 +495,73 @@ const graphElements = () => {
     })
   );
 
-  const inboundEdges = (state.chapterReferences.references || [])
-    .filter(
-      (reference) =>
-        reference.toChapterId === state.chapterId &&
-        localSceneIds.has(reference.toSceneId) &&
-        reference.fromChapterId !== state.chapterId
-    )
-    .map((reference, index) => {
+  const inboundReferences = (state.chapterReferences.references || []).filter(
+    (reference) =>
+      reference.toChapterId === state.chapterId &&
+      localSceneIds.has(reference.toSceneId) &&
+      reference.fromChapterId !== state.chapterId
+  );
+
+  const inboundEdges = state.graphCrossChapterMode === "grouped"
+    ? (() => {
+      const groups = new Map();
+      const nodeCounts = new Map();
+      inboundReferences.forEach((reference) => {
+        const isStart = reference.fromChapterId === startChapterId;
+        if (isStart) {
+          const key = `${reference.fromChapterId}:${reference.fromSceneId}:${reference.toSceneId}`;
+          groups.set(key, { references: [reference], nodeId: "start-node", isStart });
+          return;
+        }
+
+        const key = `${reference.fromChapterId}:${reference.toSceneId}`;
+        if (!groups.has(key)) {
+          groups.set(key, {
+            references: [],
+            nodeId: externalChapterNodeId(reference.fromChapterId),
+            isStart: false,
+          });
+        }
+        groups.get(key).references.push(reference);
+        nodeCounts.set(reference.fromChapterId, (nodeCounts.get(reference.fromChapterId) || 0) + 1);
+      });
+
+      return [...groups.values()].map((group, index) => {
+        const firstReference = group.references[0];
+        if (group.isStart) {
+          addOrUpdateExternalNode(externalNodesById, group.nodeId, {
+            enter: "yes",
+            start: "yes",
+            chapterId: firstReference.fromChapterId,
+            sceneId: "",
+            navigationKind: "start",
+          });
+        } else {
+          addOrUpdateExternalNode(externalNodesById, group.nodeId, {
+            enter: "yes",
+            grouped: "yes",
+            chapterId: firstReference.fromChapterId,
+            sceneId: firstReference.fromSceneId,
+            linkCount: nodeCounts.get(firstReference.fromChapterId) || group.references.length,
+            navigationKind: "enter",
+          });
+        }
+
+        return {
+          data: {
+            id: `enter-group-edge:${firstReference.fromChapterId}:${firstReference.toSceneId}:${index}`,
+            source: group.nodeId,
+            target: firstReference.toSceneId,
+            label: group.isStart
+              ? graphTextPreview(firstReference.actionText || "entry")
+              : `${group.references.length} ${group.references.length === 1 ? "link" : "links"}`,
+            crossChapter: "yes",
+            grouped: group.isStart ? "no" : "yes",
+          },
+        };
+      });
+    })()
+    : inboundReferences.map((reference, index) => {
       const isStart = reference.fromChapterId === startChapterId;
       const nodeId = isStart ? "start-node" : externalNodeId(reference.fromChapterId, reference.fromSceneId);
       addOrUpdateExternalNode(externalNodesById, nodeId, {
@@ -2416,6 +2489,48 @@ const renderAction = (scene, action, index) => {
   return card;
 };
 
+const renderChapterSettings = () => {
+  const section = document.createElement("section");
+  section.className = "section";
+
+  const header = document.createElement("div");
+  header.className = "section-header";
+  const title = document.createElement("h2");
+  title.textContent = "Chapter";
+  header.appendChild(title);
+  section.appendChild(header);
+
+  const fields = document.createElement("div");
+  fields.className = "field-row";
+  fields.appendChild(
+    field("Chapter name", state.chapter.name, (value) => {
+      state.chapter.name = value;
+      markDirty();
+    })
+  );
+
+  const idWrapper = document.createElement("div");
+  const idLabel = document.createElement("label");
+  const idInput = document.createElement("input");
+  idLabel.textContent = "Chapter id / filename";
+  idInput.value = state.chapterId;
+  idWrapper.append(idLabel, idInput);
+  fields.appendChild(idWrapper);
+  section.appendChild(fields);
+
+  const help = document.createElement("div");
+  help.className = "chapter-settings-help";
+  help.textContent = "Chapter ids become JSON filenames and may only use letters, numbers, underscores, and hyphens.";
+  section.appendChild(help);
+
+  const actions = document.createElement("div");
+  actions.className = "card-actions";
+  actions.appendChild(button("Apply Chapter Settings", () => renameCurrentChapter(idInput.value)));
+  section.appendChild(actions);
+
+  editorEl.appendChild(section);
+};
+
 const renderStartEditor = () => {
   renderSceneIdDatalist();
   renderStartSceneIdDatalist();
@@ -2497,9 +2612,13 @@ const renderEditor = () => {
     renderStartEditor();
     return;
   }
+  if (state.chapter?.scenes) renderChapterSettings();
   const scene = sceneById(state.selectedSceneId);
   if (!scene) {
-    editorEl.innerHTML = '<div class="empty-state">Select a scene node to edit it.</div>';
+    const emptyState = document.createElement("div");
+    emptyState.className = "empty-state";
+    emptyState.textContent = "Select a scene node to edit it.";
+    editorEl.appendChild(emptyState);
     renderPreview();
     return;
   }
@@ -2643,17 +2762,19 @@ const loadChapter = async (chapterId, selectedSceneId) => {
   }
 };
 
-const loadChapters = async () => {
+const loadChapters = async ({ loadInitial = true } = {}) => {
   state.chapters = await api("/api/chapters");
   const chapters = state.chapters.filter((chapter) => chapter.hasScenes || chapter.isStart);
   chapterSelect.innerHTML = "";
   chapters.forEach((chapter) => {
     const option = document.createElement("option");
     option.value = chapter.id;
-    option.textContent = chapter.isStart ? `${chapter.id} (start)` : `${chapter.id} (${chapter.sceneCount})`;
+    option.textContent = chapterOptionText(chapter);
     chapterSelect.appendChild(option);
   });
   renderChapterIdDatalist();
+
+  if (!loadInitial) return;
 
   if (chapters.length > 0) {
     const savedSelection = loadEditorSelection();
@@ -2781,7 +2902,7 @@ const deleteCurrentChapter = async () => {
 };
 
 const saveChapter = async () => {
-  if (!state.chapter || !state.chapterId) return;
+  if (!state.chapter || !state.chapterId) return false;
   try {
     setStatus("Saving...");
     await api(`/api/chapters/${state.chapterId}`, {
@@ -2791,6 +2912,54 @@ const saveChapter = async () => {
     });
     state.savedSnapshot = chapterSnapshot();
     updateDirtyStatus();
+    await loadChapters({ loadInitial: false });
+    chapterSelect.value = state.chapterId;
+    return true;
+  } catch (error) {
+    setStatus(error.message, "error");
+    alert(error.message);
+    return false;
+  }
+};
+
+const renameCurrentChapter = async (newChapterId) => {
+  if (!state.chapter || !state.chapterId || state.chapterId === startChapterId) return;
+  const chapterId = String(newChapterId || "").trim();
+  if (!chapterId) {
+    alert("Chapter id is required.");
+    return;
+  }
+
+  if (chapterId === state.chapterId) {
+    await saveChapter();
+    return;
+  }
+
+  if (!confirm(`Renaming the chapter id will also rename ${state.chapterId}.json to ${chapterId}.json and update references. Continue?`)) {
+    return;
+  }
+
+  if (state.dirty) {
+    if (!confirm("Save current chapter changes before renaming the file?")) return;
+    const saved = await saveChapter();
+    if (!saved) return;
+  }
+
+  const selectedSceneId = state.selectedSceneId;
+  try {
+    setStatus("Renaming chapter...");
+    const result = await api(`/api/chapters/${state.chapterId}/rename`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chapterId,
+        name: state.chapter.name || "",
+      }),
+    });
+    await loadChapters({ loadInitial: false });
+    chapterSelect.value = result.chapterId;
+    await loadChapter(result.chapterId, selectedSceneId);
+    setStatus(`Renamed chapter to ${result.chapterId}`, "saved");
   } catch (error) {
     setStatus(error.message, "error");
     alert(error.message);
@@ -2818,6 +2987,11 @@ const deployGame = async () => {
 
 const setGraphLayout = (mode) => {
   state.graphLayoutMode = mode;
+  renderGraph({ relayout: true });
+};
+
+const setCrossChapterMode = (mode) => {
+  state.graphCrossChapterMode = mode;
   renderGraph({ relayout: true });
 };
 
@@ -2850,6 +3024,19 @@ const graphLayoutItems = () => ["auto", "directed", "organic", "grid"].map((mode
   active: state.graphLayoutMode === mode,
   onClick: () => setGraphLayout(mode),
 }));
+
+const crossChapterModeItems = () => [
+  {
+    label: "Cross-Chapter: Scene Links",
+    active: state.graphCrossChapterMode === "scene",
+    onClick: () => setCrossChapterMode("scene"),
+  },
+  {
+    label: "Cross-Chapter: Grouped Chapters",
+    active: state.graphCrossChapterMode === "grouped",
+    onClick: () => setCrossChapterMode("grouped"),
+  },
+];
 
 const toolbarMenus = [
   {
@@ -2902,6 +3089,8 @@ const toolbarMenus = [
     button: layoutMenuButton,
     items: () => [
       ...graphLayoutItems(),
+      { separator: true },
+      ...crossChapterModeItems(),
       { separator: true },
       { label: "Preview: Beside Editor", active: state.panelLayout.mode === "beside", onClick: () => setPreviewLayout("beside") },
       { label: "Preview: Below Editor", active: state.panelLayout.mode === "below", onClick: () => setPreviewLayout("below") },

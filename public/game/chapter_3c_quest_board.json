@@ -1,0 +1,139 @@
+{
+  "name": "Village Quest Board",
+  "scenes": [
+    {
+      "id": "village_square_quest_board",
+      "name": "Village - Square - Quest Board",
+      "paragraphs": [
+        "Here you see all the available quests in the village.",
+        {
+          "text": "For the moment only unemployment seems available.",
+          "hideAny": [
+            "opened_village_quest_board_backside"
+          ]
+        },
+        {
+          "text": "The description from the barkeep seems true -- There seems to be something on the backside of the quest board.",
+          "showAny": [
+            "opened_village_quest_board_backside"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "text": "Inspect backside",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square_quest_board_backside"
+            }
+          ],
+          "showAny": [
+            "opened_village_quest_board_backside"
+          ]
+        },
+        {
+          "text": "Step back",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square",
+              "chapterId": "chapter_3a_village"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "village_square_quest_board_backside",
+      "name": "Quest Board - Backside",
+      "paragraphs": [
+        "The backside of the quest board. ",
+        "A note hangs there.",
+        {
+          "text": "> You touch the backside. It is greasy and slimy. Ew, why did you do that? Now your fingers smells like week old fish.",
+          "showAny": [
+            "village_square_quest_board_backside_touched_it"
+          ]
+        },
+        {
+          "text": "> You transferred most of the greasiness and sliminess onto the note. Even the village cat would find the fishy smell revolting.",
+          "showAny": [
+            "village_square_quest_board_backside_wiped_fingers"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "text": "Touch the backside",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_square_quest_board_backside_touched_it"
+            }
+          ],
+          "hideAny": [
+            "village_square_quest_board_backside_touched_it"
+          ]
+        },
+        {
+          "text": "Wipe your fingers on the note",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_square_quest_board_backside_wiped_fingers"
+            }
+          ],
+          "showAny": [
+            "village_square_quest_board_backside_touched_it"
+          ],
+          "hideAny": [
+            "village_square_quest_board_backside_wiped_fingers"
+          ]
+        },
+        {
+          "text": "Inspect the note",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "quest_board_backside_quest_inspected_note"
+            },
+            {
+              "type": "movement",
+              "target": "quest_board_backside_quest"
+            }
+          ]
+        },
+        {
+          "text": "Go back",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square_quest_board"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "quest_board_backside_quest",
+      "name": "Quest Board - Backside - Note",
+      "paragraphs": [
+        "\"Talk to me for some extra coins.\"\n",
+        "\"Oh by the way, very legal. Yes very.\"",
+        "\"By the way by the way, this is the shop keeper.\""
+      ],
+      "actions": [
+        {
+          "text": "Go back",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square_quest_board_backside"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

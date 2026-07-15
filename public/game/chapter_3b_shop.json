@@ -1,0 +1,241 @@
+{
+  "name": "Village Shop",
+  "scenes": [
+    {
+      "id": "village_shop_1",
+      "name": "Village - Shop",
+      "paragraphs": [
+        "\"How are ya?\", the shopkeeper says. \"Looking a bit... wet.\"",
+        "\"Anyway, look at my wares!\" He points at an assortment of different goods.",
+        {
+          "text": "> You look at the wares. There isn't anything worth anything here. Maybe try your luck at a later time?",
+          "showAny": [
+            "village_shopkeeper_looked_at_wares"
+          ]
+        },
+        {
+          "text": "This man gave you a quest. A quest you have yet to complete.",
+          "showAny": [
+            "village_shop_took_quest"
+          ],
+          "hideAny": [
+            "village_shop_completed_quest"
+          ]
+        },
+        {
+          "text": "This man gave you a quest. A quest you have completed.",
+          "showAll": [
+            "village_shop_took_quest",
+            "village_shop_completed_quest"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "text": "Take a look",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_shopkeeper_looked_at_wares"
+            }
+          ],
+          "hideAny": [
+            "village_shopkeeper_looked_at_wares"
+          ]
+        },
+        {
+          "text": "Ask about the note",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_shop_2"
+            }
+          ],
+          "showAny": [
+            "quest_board_backside_quest_inspected_note"
+          ],
+          "hideAny": [
+            "village_shop_took_quest"
+          ]
+        },
+        {
+          "text": "Go back",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square",
+              "chapterId": "chapter_3a_village"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "village_shop_2",
+      "name": "Shopkeeper - Secret Quest",
+      "paragraphs": [
+        "\"Oooh, askin' about the secret quest, are ya? Well, ya seem like a decent fellow. Let's see if ya're up'n'to the task.\"",
+        "The shopkeeper reaches down. A small package is presents itself to you on the vendors table.",
+        "\"Ya agree to the job?\"",
+        {
+          "text": "> You try to take the package.",
+          "showAny": [
+            "village_shop_took_package_too_early"
+          ]
+        },
+        {
+          "text": "\"Ya daft head! Agree to the job before taking the package. These young'ins...\"",
+          "showAny": [
+            "village_shop_took_package_too_early"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "text": "Take package",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_shop_took_package_too_early"
+            }
+          ],
+          "hideAny": [
+            "village_shop_took_package",
+            "village_shop_took_quest",
+            "village_shop_took_package_too_early"
+          ]
+        },
+        {
+          "text": "Agree to the job",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_shop_took_quest"
+            },
+            {
+              "type": "movement",
+              "target": "village_shop_3"
+            }
+          ],
+          "hideAny": [
+            "village_shop_took_quest"
+          ]
+        },
+        {
+          "text": "Take package",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_shop_took_package"
+            },
+            {
+              "type": "add_flag",
+              "target": "village_dock_opened"
+            }
+          ],
+          "hideAny": [
+            "village_shop_took_package"
+          ],
+          "showAny": [
+            "village_shop_took_quest"
+          ]
+        },
+        {
+          "text": "Go back",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square",
+              "chapterId": "chapter_3a_village"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "village_shop_3",
+      "name": "Shopkeeper - Secret Quest",
+      "paragraphs": [
+        {
+          "text": "You reluctantly agree to the job. ",
+          "showAll": [
+            "village_shop_took_package_too_early"
+          ],
+          "ignoreSortByFlag": true
+        },
+        {
+          "text": "The shop keeper looks suspiciously at you.",
+          "showAll": [
+            "village_shop_took_package_too_early"
+          ]
+        },
+        {
+          "text": "You nod to the shop keeper, taking the secret quest.\n",
+          "hideAny": [
+            "village_shop_took_package_too_early"
+          ],
+          "ignoreSortByFlag": true
+        },
+        {
+          "text": "\"Good lad.\"",
+          "hideAny": [
+            "village_shop_took_package_too_early"
+          ],
+          "ignoreSortByFlag": true
+        },
+        {
+          "text": "\"Take this one to the dock master.\" He looks you in the eye. \"Remember this! This is very important. Tell him this is from Albert the 4th of the Vicount's 9th son! Veeery important you remember that.\"",
+          "ignoreSortByFlag": true
+        },
+        {
+          "text": "> You take the package.",
+          "showAny": [
+            "village_shop_took_package"
+          ],
+          "ignoreSortByFlag": true
+        },
+        {
+          "text": "He pats your back. \"Now get!\"",
+          "showAny": [
+            "village_shop_took_package"
+          ],
+          "ignoreSortByFlag": true
+        }
+      ],
+      "actions": [
+        {
+          "text": "Take package",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_shop_took_package"
+            },
+            {
+              "type": "add_flag",
+              "target": "village_dock_opened"
+            }
+          ],
+          "hideAny": [
+            "village_shop_took_package"
+          ],
+          "showAny": [
+            "village_shop_took_quest"
+          ]
+        },
+        {
+          "text": "Go back",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square",
+              "chapterId": "chapter_3a_village"
+            }
+          ],
+          "showAny": [
+            "village_shop_took_package"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -205,6 +205,12 @@ textarea {
   font-weight: bold;
 }
 
+.chapter-settings-help {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
 .layout {
   display: grid;
   flex: 1 1 auto;
