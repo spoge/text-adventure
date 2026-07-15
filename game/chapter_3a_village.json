@@ -1,0 +1,141 @@
+{
+  "name": "Village",
+  "scenes": [
+    {
+      "id": "village_forest_entrance",
+      "name": "Village - Entrance",
+      "paragraphs": [
+        "You enter the village. It looks quite nice and is of a moderate size!",
+        "You look back and the door is already shut closed.",
+        "The village square is just before you."
+      ],
+      "actions": [
+        {
+          "text": "Go to Village Square",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "village_square",
+      "name": "Village - Square",
+      "paragraphs": [
+        "The square is connected to most areas in the village."
+      ],
+      "actions": [
+        {
+          "text": "Go to Tavern",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_tavern"
+            }
+          ]
+        },
+        {
+          "text": "Go to Quest Board",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square_quest_board",
+              "chapterId": "chapter_3c_quest_board"
+            }
+          ]
+        },
+        {
+          "text": "Go to Village Shop",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_shop_1",
+              "chapterId": "chapter_3b_shop"
+            }
+          ],
+          "showAny": [
+            "opened_village_shop"
+          ]
+        },
+        {
+          "text": "Go to Village Docks",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "docks_1",
+              "chapterId": "chapter_3d_docks"
+            }
+          ],
+          "showAny": [
+            "village_dock_opened"
+          ]
+        },
+        {
+          "text": "Go to Orchards by the High Roads",
+          "showAny": [
+            "opened_village_orchard"
+          ],
+          "triggers": []
+        }
+      ]
+    },
+    {
+      "id": "village_tavern",
+      "name": "Village - Tavern",
+      "paragraphs": [
+        "The first thing that strikes you is the noise. Fishermen know how to keep it lively.",
+        "The tavern smells of good food and drinks - thankfully not too fishy.",
+        {
+          "text": "> You ask the barkeep about any quests. He recommend checking out the backside of the quest board for the... unusual quests.",
+          "showAny": [
+            "opened_village_quest_board_backside"
+          ]
+        },
+        {
+          "text": "> You ask the barkeep about shops for perusing any goods. He tips you about the village shop not far from the village square.",
+          "showAny": [
+            "opened_village_shop"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "text": "Ask barkeep about quests",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "opened_village_quest_board_backside"
+            }
+          ],
+          "hideAny": [
+            "opened_village_quest_board_backside"
+          ]
+        },
+        {
+          "text": "Ask barkeep about shops",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "opened_village_shop"
+            }
+          ],
+          "hideAny": [
+            "opened_village_shop"
+          ]
+        },
+        {
+          "text": "Back to Village Square",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
