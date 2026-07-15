@@ -2,7 +2,7 @@
   "name": "Village Shop",
   "scenes": [
     {
-      "id": "village_shop_1",
+      "id": "village_shop_2",
       "name": "Village - Shop",
       "paragraphs": [
         "\"How are ya?\", the shopkeeper says. \"Looking a bit... wet.\"",
@@ -48,7 +48,7 @@
           "triggers": [
             {
               "type": "movement",
-              "target": "village_shop_2"
+              "target": "village_shop_3"
             }
           ],
           "showAny": [
@@ -63,15 +63,14 @@
           "triggers": [
             {
               "type": "movement",
-              "target": "village_square",
-              "chapterId": "chapter_3a_village"
+              "target": "village_shop_1"
             }
           ]
         }
       ]
     },
     {
-      "id": "village_shop_2",
+      "id": "village_shop_3",
       "name": "Shopkeeper - Secret Quest",
       "paragraphs": [
         "\"Oooh, askin' about the secret quest, are ya? Well, ya seem like a decent fellow. Let's see if ya're up'n'to the task.\"",
@@ -114,7 +113,7 @@
             },
             {
               "type": "movement",
-              "target": "village_shop_3"
+              "target": "village_shop_4"
             }
           ],
           "hideAny": [
@@ -145,15 +144,14 @@
           "triggers": [
             {
               "type": "movement",
-              "target": "village_square",
-              "chapterId": "chapter_3a_village"
+              "target": "village_shop_1"
             }
           ]
         }
       ]
     },
     {
-      "id": "village_shop_3",
+      "id": "village_shop_4",
       "name": "Shopkeeper - Secret Quest",
       "paragraphs": [
         {
@@ -227,12 +225,40 @@
           "triggers": [
             {
               "type": "movement",
-              "target": "village_square",
-              "chapterId": "chapter_3a_village"
+              "target": "village_shop_1"
             }
           ],
           "showAny": [
             "village_shop_took_package"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "village_shop_1",
+      "name": "Village Shop",
+      "paragraphs": [
+        "A small shop sits at the sits lonely just by the Village Square. Behind the bench is a bench, with some boxes and a enthusiastic man behind it.",
+        "He's probably very bored. "
+      ],
+      "actions": [
+        {
+          "text": "Talk to shopkeeper",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_shop_2"
+            }
+          ]
+        },
+        {
+          "text": "Go back to Village Square",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square",
+              "chapterId": "chapter_3a_village"
+            }
           ]
         }
       ]

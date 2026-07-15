@@ -20,6 +20,7 @@ const graphOrganicNodeOverlap = 70;
 const startChapterId = "-start-";
 const panelLayoutStorageKey = "textAdventureEditorPanelLayout";
 const editorSelectionStorageKey = "textAdventureEditorSelection";
+const graphLayoutStorageKey = "textAdventureEditorGraphLayout";
 
 const state = {
   chapterId: "",
@@ -30,6 +31,9 @@ const state = {
   graph: null,
   graphDagreRegistered: false,
   graphLayoutMode: "auto",
+  graphRenderedLayoutKey: "",
+  graphLayoutSaveTimer: null,
+  isRestoringGraphLayout: false,
   isClampingGraphPan: false,
   savedSnapshot: "",
   undoStack: [],
@@ -600,6 +604,121 @@ const restoreNodePositions = (positions) => {
   });
 };
 
+const graphLayoutKey = () =>
+  state.chapterId ? `${state.chapterId}|${state.graphCrossChapterMode}` : "";
+
+const validPoint = (value) =>
+  value &&
+  Number.isFinite(value.x) &&
+  Number.isFinite(value.y);
+
+const sanitizeGraphLayout = (layout) => {
+  if (!layout || typeof layout !== "object") return null;
+  const positions = {};
+  Object.entries(layout.positions || {}).forEach(([id, position]) => {
+    if (typeof id === "string" && validPoint(position)) {
+      positions[id] = { x: position.x, y: position.y };
+    }
+  });
+  const zoom = Number(layout.zoom);
+  return {
+    positions,
+    pan: validPoint(layout.pan) ? { x: layout.pan.x, y: layout.pan.y } : null,
+    zoom: Number.isFinite(zoom) ? clamp(zoom, graphMinZoom, graphMaxZoom) : null,
+  };
+};
+
+const emptyGraphLayoutStore = () => ({
+  prefs: {},
+  layouts: {},
+});
+
+const loadGraphLayoutStore = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(graphLayoutStorageKey) || "null");
+    if (!saved || typeof saved !== "object") return emptyGraphLayoutStore();
+    return {
+      prefs: saved.prefs && typeof saved.prefs === "object" ? saved.prefs : {},
+      layouts: saved.layouts && typeof saved.layouts === "object" ? saved.layouts : {},
+    };
+  } catch (error) {
+    console.warn("Could not load editor graph layout", error);
+    return emptyGraphLayoutStore();
+  }
+};
+
+const saveGraphLayoutStore = (store) => {
+  try {
+    localStorage.setItem(graphLayoutStorageKey, JSON.stringify(store));
+  } catch (error) {
+    console.warn("Could not save editor graph layout", error);
+  }
+};
+
+const loadGraphPreferences = () => {
+  const { prefs } = loadGraphLayoutStore();
+  if (["auto", "directed", "organic", "grid"].includes(prefs.graphLayoutMode)) {
+    state.graphLayoutMode = prefs.graphLayoutMode;
+  }
+  if (["scene", "grouped"].includes(prefs.graphCrossChapterMode)) {
+    state.graphCrossChapterMode = prefs.graphCrossChapterMode;
+  }
+};
+
+const saveGraphPreferences = () => {
+  const store = loadGraphLayoutStore();
+  store.prefs = {
+    graphLayoutMode: state.graphLayoutMode,
+    graphCrossChapterMode: state.graphCrossChapterMode,
+  };
+  saveGraphLayoutStore(store);
+};
+
+const loadGraphLayout = (key = graphLayoutKey()) => {
+  if (!key) return null;
+  const store = loadGraphLayoutStore();
+  return sanitizeGraphLayout(store.layouts[key]);
+};
+
+const saveGraphLayout = (key = state.graphRenderedLayoutKey || graphLayoutKey()) => {
+  if (!state.graph || !key || state.isRestoringGraphLayout) return;
+  const store = loadGraphLayoutStore();
+  store.layouts[key] = {
+    positions: nodePositions(),
+    pan: state.graph.pan(),
+    zoom: state.graph.zoom(),
+  };
+  store.prefs = {
+    graphLayoutMode: state.graphLayoutMode,
+    graphCrossChapterMode: state.graphCrossChapterMode,
+  };
+  saveGraphLayoutStore(store);
+};
+
+const scheduleSaveGraphLayout = () => {
+  if (state.isRestoringGraphLayout) return;
+  window.clearTimeout(state.graphLayoutSaveTimer);
+  state.graphLayoutSaveTimer = window.setTimeout(saveGraphLayout, 150);
+};
+
+const applySavedGraphLayout = (layout) => {
+  if (!state.graph || !layout) return;
+  state.isRestoringGraphLayout = true;
+  restoreNodePositions(layout.positions);
+  if (layout.zoom !== null) state.graph.zoom(layout.zoom);
+  if (layout.pan) state.graph.pan(layout.pan);
+  state.isRestoringGraphLayout = false;
+};
+
+const applySavedPositionsToElements = (elements, layout) => {
+  if (!layout) return elements;
+  return elements.map((element) => {
+    const id = element.data?.id;
+    if (!id || !layout.positions[id]) return element;
+    return { ...element, position: layout.positions[id] };
+  });
+};
+
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 const clampGraphPan = () => {
@@ -1036,8 +1155,12 @@ const renderGraph = ({ relayout = false } = {}) => {
   if (!state.chapter || (!state.chapter.scenes && state.chapterId !== startChapterId)) return;
 
   ensureGraphLayoutExtensions();
-  const elements = graphElements();
+  const layoutKey = graphLayoutKey();
+  const savedLayout = relayout ? null : loadGraphLayout(layoutKey);
+  const elements = applySavedPositionsToElements(graphElements(), savedLayout);
+  let ranLayout = false;
   if (!state.graph) {
+    ranLayout = !savedLayout;
     state.graph = cytoscape({
       container: document.getElementById("graph"),
       elements,
@@ -1157,8 +1280,9 @@ const renderGraph = ({ relayout = false } = {}) => {
           },
         },
       ],
-      layout: graphLayoutOptions(),
+      layout: savedLayout ? { name: "preset", fit: false } : graphLayoutOptions(),
     });
+    state.graphRenderedLayoutKey = layoutKey;
 
     state.graph.on("tap", "node", (event) => {
       hideContextMenu();
@@ -1186,18 +1310,31 @@ const renderGraph = ({ relayout = false } = {}) => {
       event.originalEvent?.preventDefault();
       showGraphContextMenu(event);
     });
-    state.graph.on("pan zoom", clampGraphPan);
+    state.graph.on("pan zoom", () => {
+      clampGraphPan();
+      scheduleSaveGraphLayout();
+    });
+    state.graph.on("dragfree layoutstop", scheduleSaveGraphLayout);
   } else {
-    const positions = nodePositions();
+    const previousLayoutKey = state.graphRenderedLayoutKey;
+    const positions = previousLayoutKey === layoutKey ? nodePositions() : savedLayout?.positions || {};
+    const shouldRelayout = relayout || (previousLayoutKey !== layoutKey && !savedLayout);
     state.graph.elements().remove();
     state.graph.add(elements);
     restoreNodePositions(positions);
-    if (relayout) state.graph.layout(graphLayoutOptions()).run();
+    state.graphRenderedLayoutKey = layoutKey;
+    if (shouldRelayout) {
+      ranLayout = true;
+      state.graph.layout(graphLayoutOptions()).run();
+    }
+    else applySavedGraphLayout(savedLayout);
   }
 
+  if (savedLayout) applySavedGraphLayout(savedLayout);
   resizeGraph();
   clampGraphPan();
-  if (relayout) fitGraphAfterLayout();
+  if (ranLayout) fitGraphAfterLayout();
+  else scheduleSaveGraphLayout();
 
   if (state.selectedSceneId) {
     const selected = state.graph.getElementById(state.selectedSceneId);
@@ -2729,6 +2866,7 @@ const renderEditor = () => {
 };
 
 const loadChapter = async (chapterId, selectedSceneId) => {
+  saveGraphLayout();
   state.chapterId = chapterId;
   state.chapter = null;
   state.selectedSceneId = "";
@@ -2756,9 +2894,10 @@ const loadChapter = async (chapterId, selectedSceneId) => {
   }
   renderEditor();
   if (chapter.scenes || chapterId === startChapterId) {
-    renderGraph({ relayout: true });
+    renderGraph();
   } else if (state.graph) {
     state.graph.elements().remove();
+    state.graphRenderedLayoutKey = "";
   }
 };
 
@@ -2987,12 +3126,15 @@ const deployGame = async () => {
 
 const setGraphLayout = (mode) => {
   state.graphLayoutMode = mode;
+  saveGraphPreferences();
   renderGraph({ relayout: true });
 };
 
 const setCrossChapterMode = (mode) => {
+  saveGraphLayout();
   state.graphCrossChapterMode = mode;
-  renderGraph({ relayout: true });
+  saveGraphPreferences();
+  renderGraph();
 };
 
 const setPreviewLayout = (mode) => {
@@ -3116,6 +3258,7 @@ toolbarMenus.forEach(({ button: menuButton, items }) => {
 
 saveButton.addEventListener("click", saveChapter);
 
+loadGraphPreferences();
 loadPanelLayout();
 applyPanelLayout();
 
@@ -3130,6 +3273,7 @@ window.addEventListener("mousedown", (event) => {
   hideAutocompleteMenu();
 });
 window.addEventListener("beforeunload", (event) => {
+  saveGraphLayout();
   if (!state.dirty) return;
   event.preventDefault();
   event.returnValue = "";
