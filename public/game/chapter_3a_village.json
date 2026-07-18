@@ -79,7 +79,8 @@
           "triggers": [
             {
               "type": "movement",
-              "target": "village_sheriff"
+              "target": "village_sheriff_1",
+              "chapterId": "chapter_3e_sheriff"
             }
           ],
           "showAny": [
@@ -166,139 +167,6 @@
         },
         {
           "text": "Back to Village Square",
-          "triggers": [
-            {
-              "type": "movement",
-              "target": "village_square"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "village_sheriff",
-      "name": "Village - Sheriff",
-      "paragraphs": [
-        "Smoke fills your nostrils as you walk inside. A man in his 40s or 50s sits with his feet on a desk. The prominent star on his breast pocket sparkles.",
-        "\"Now, what can I do for you?\"",
-        {
-          "text": "> You gave the package to the sheriff without explaining.",
-          "showAny": [
-            "village_sheriff_gave_package"
-          ]
-        },
-        {
-          "text": "\"Fella, I appreciate you giving me this package. But I need to know where you got this. If you don't, I will be forced to arrest you on the grounds of you carrying illicit goods.\"",
-          "showAny": [
-            "village_sheriff_gave_package"
-          ]
-        },
-        {
-          "text": "> You ratted out the shopkeeper and gave the sheriff the package.",
-          "showAny": [
-            "village_sheriff_gave_package_and_explained"
-          ]
-        },
-        {
-          "text": "\"Oh, mighty kind of you, sir... Or madam?\" He pauses. \"Anyway, now this mystery can finally be solved. Unfortunately I don't have a reward right now. But on behalf of the town mayor you're invited to dine at the mayor's manor later today. I'll make sure a fitting reward awaits you there.\" ",
-          "showAny": [
-            "village_sheriff_gave_package_and_explained"
-          ]
-        },
-        {
-          "text": "> You relented and ratted out the shopkeeper",
-          "showAny": [
-            "village_sheriff_gave_package_and_later_explained"
-          ]
-        },
-        {
-          "text": "\"Very wise of you.\" He pats you on the back. \"I understand you hesitatin', so I won't hold it against you. A dinner is being held at the major's manor later today. Consider yourself invited.\"",
-          "showAny": [
-            "village_sheriff_gave_package_and_later_explained"
-          ]
-        }
-      ],
-      "actions": [
-        {
-          "text": "Give him the package and explain everything",
-          "triggers": [
-            {
-              "type": "add_flag",
-              "target": "village_sheriff_gave_package_and_explained"
-            },
-            {
-              "type": "add_flag",
-              "target": "village_sheriff_invited"
-            },
-            {
-              "type": "remove_flag",
-              "target": "village_dock_opened"
-            }
-          ],
-          "hideAny": [
-            "village_sheriff_gave_package_and_explained",
-            "village_sheriff_gave_package"
-          ]
-        },
-        {
-          "text": "Give him the package and explain nothing",
-          "triggers": [
-            {
-              "type": "add_flag",
-              "target": "village_sheriff_gave_package"
-            },
-            {
-              "type": "remove_flag",
-              "target": "village_dock_opened"
-            }
-          ],
-          "hideAny": [
-            "village_sheriff_gave_package",
-            "village_sheriff_gave_package_and_explained"
-          ]
-        },
-        {
-          "text": "Relent and explain",
-          "triggers": [
-            {
-              "type": "add_flag",
-              "target": "village_sheriff_gave_package_and_later_explained"
-            },
-            {
-              "type": "add_flag",
-              "target": "village_sheriff_invited"
-            }
-          ],
-          "showAny": [
-            "village_sheriff_gave_package"
-          ],
-          "hideAny": [
-            "village_sheriff_gave_package_and_explained",
-            "village_sheriff_gave_package_and_later_explained"
-          ]
-        },
-        {
-          "text": "Refuse to explain",
-          "triggers": [
-            {
-              "type": "add_flag",
-              "target": "village_sheriff_arrested"
-            },
-            {
-              "type": "movement",
-              "target": "village_mayor_manor_dungeon"
-            }
-          ],
-          "showAny": [
-            "village_sheriff_gave_package"
-          ],
-          "hideAny": [
-            "village_sheriff_gave_package_and_explained",
-            "village_sheriff_gave_package_and_later_explained"
-          ]
-        },
-        {
-          "text": "Go back",
           "triggers": [
             {
               "type": "movement",
