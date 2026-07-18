@@ -86,6 +86,15 @@
               "target": "village_sheriff_1"
             }
           ]
+        },
+        {
+          "text": "Spit in his face",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_sheriff_3_arrested"
+            }
+          ]
         }
       ]
     },
@@ -141,6 +150,15 @@
             {
               "type": "movement",
               "target": "village_sheriff_1"
+            }
+          ]
+        },
+        {
+          "text": "Spit in his face",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_sheriff_3_arrested"
             }
           ]
         }
