@@ -1,17 +1,17 @@
 # Sboge - Text Adventure
 
-A React + Vite text adventure where the story lives in static JSON files. The app fetches chapter files from `public/game/` at runtime and stores the current save in `localStorage`.
+The goal of this project is to create a simple text adventure in React, where the entire adventure is stored in json. The files are static and loaded from `public/game/` when the game runs.
 
-## Repository Shape
+## About
 
-- `src/index.jsx` renders the React app.
+- `src/index.jsx` starts the React app.
 - `src/components/App.jsx` is the main app component.
-- `src/hooks/useGameLogic.jsx` contains the core game flow.
-- `src/utils/DispatchTrigger.js` handles action trigger dispatch.
-- `src/utils/CheckFlag.js` handles flag-based visibility rules.
-- `public/game/*.json` contains the playable game content.
-- `public/game/-start-.json` defines the first chapter, scene, and flags for a new save.
-- `tools/editor/` contains the local chapter editor.
+- `src/hooks/useGameLogic.jsx` contains most of the game logic.
+- `src/utils/DispatchTrigger.js` handles what happens when an action is performed.
+- `src/utils/CheckFlag.js` handles show/hide rules for flags.
+- `public/game/*.json` contains the game content.
+- `public/game/-start-.json` decides where a new game starts.
+- `tools/editor/` contains the local editor.
 
 ## Getting Started
 
@@ -21,7 +21,7 @@ Install dependencies:
 npm install
 ```
 
-Run the game locally:
+Run the game:
 
 ```sh
 npm start
@@ -39,7 +39,7 @@ Preview the production build:
 npm run preview
 ```
 
-Deploy to GitHub Pages:
+Deploy with gh-pages:
 
 ```sh
 npm run deploy
@@ -47,7 +47,7 @@ npm run deploy
 
 ## Chapter Editor
 
-The repository includes a local editor for working with the JSON files in `public/game/`.
+There is a local editor for working with the json files in `public/game/`.
 
 Start it with:
 
@@ -55,23 +55,23 @@ Start it with:
 npm run editor
 ```
 
-By default it serves `tools/editor/public/` at `http://localhost:4000` and opens the browser automatically. Set `EDITOR_PORT` to use another port, or `EDITOR_OPEN=false` to prevent auto-opening the browser.
+By default it serves `tools/editor/public/` at `http://localhost:4000` and opens the browser. Use `EDITOR_PORT` to choose another port, or `EDITOR_OPEN=false` if you do not want it to open the browser automatically.
 
-The editor runs through `tools/editor/server.js` and can read and write `public/game/*.json`. It supports creating, renaming, deleting, and editing chapters; editing scenes, paragraphs, actions, triggers, and start config; moving scenes between chapters; validating references; and local commit/push or deploy actions.
+The editor runs through `tools/editor/server.js`. It reads and writes `public/game/*.json`, so changes made in the editor are changes to the actual game files. It can create, rename, delete, and edit chapters; edit scenes, paragraphs, actions and triggers; edit the start config; move scenes between chapters; validate references; and run commit/push or deploy actions locally.
 
-The editor is local tooling only. It is not part of the Vite app and is not deployed as part of the `build/` output.
+The editor is only local tooling. It is not part of the Vite app and is not included in the `build/` output.
 
-## Saves And Startup
+## Save Game
 
-The save game is stored in `localStorage` under the `save` key and contains:
+The save game is stored in `localStorage` under the `save` key. It is made up of three things:
 
 - Current chapter id
 - Current scene id
 - Global flags
 
-Existing saves override the start config. To force a fresh start, clear `localStorage.save`, use the debug respawn shortcut, or visit `/text-adventure/reset` in the deployed route. The reset route clears `localStorage.save`, returns to `/text-adventure/`, and respawns from `public/game/-start-.json`.
+Existing saves override the start config. To force a fresh start, clear `localStorage.save`, use the debug respawn shortcut, or visit `/text-adventure/reset` in the deployed route. The reset route clears the save, returns to `/text-adventure/`, and starts again from `public/game/-start-.json`.
 
-The start config looks like this:
+The first time the game starts up it will load `public/game/-start-.json`. The contents of the file decide which chapter, scene and flags it should initialize with:
 
 ```json
 {
@@ -81,25 +81,25 @@ The start config looks like this:
 }
 ```
 
-## Controls
+## Controls & Shortcuts
 
-The game can be controlled by keyboard or mouse.
+The game can be controlled by the keyboard, or by clicking an action directly.
 
 - `Enter` or `Space` activates the selected action.
 - `ArrowUp` / `ArrowDown` changes the selected action.
 - `W` / `S` also changes the selected action.
 - Clicking an action activates it directly.
 
-Debug shortcuts use shift-modified letters:
+Debug commands:
 
-- `Shift + H` lists available debug commands.
-- `Shift + D` lists current flags.
-- `Shift + C` clears all flags.
-- `Shift + N` respawns from `-start-`.
+- `Shift + H` - List of available debug commands
+- `Shift + D` - List of current flags
+- `Shift + C` - Clear all flags
+- `Shift + N` - Respawn at beginning
 
 ## Game JSON
 
-Each playable chapter is a JSON file in `public/game/`. Chapter files must expose a top-level `scenes` array.
+The game is loaded from json files. Each playable json file is a `chapter`, and must expose a top-level `scenes` array.
 
 Example chapter:
 
@@ -157,30 +157,30 @@ Example chapter:
 }
 ```
 
-Paragraphs can be strings or objects with `text` and optional visibility fields. A paragraph string containing only `---` renders as a horizontal rule.
+Paragraphs can be strings, or objects with `text` and optional visibility fields. A paragraph string containing only `---` renders as a horizontal rule.
 
 Actions contain `text`, optional visibility fields, and a `triggers` array.
 
 ## Flags
 
-Flags are global and can be used by any chapter or scene. They are mainly used to show or hide paragraphs and actions.
+Flags are stored globally and can be accessed from any chapter or scene. The most important use for flags is to show or hide paragraphs or actions.
 
-Supported visibility fields:
+There are four different flag fields you can use:
 
-- `hideAny`: hide if any listed flag has been acquired.
-- `hideAll`: hide if all listed flags have been acquired.
-- `showAny`: show if any listed flag has been acquired.
-- `showAll`: show if all listed flags have been acquired.
+- `hideAny` hides a paragraph/action if any flag in this field matches an obtained flag.
+- `hideAll` hides a paragraph/action if all flags in this field match obtained flags.
+- `showAny` shows a paragraph/action if any flag in this field matches an obtained flag.
+- `showAll` shows a paragraph/action if all flags in this field match obtained flags.
 
 Paragraph objects with `showAny` or `showAll` are sorted by the order the matching flags were acquired unless `ignoreSortByFlag` is set.
 
 ## Triggers
 
-Triggers run when the player activates an action.
+Triggers are stuff that happens when an action is performed by the player.
 
 ### `movement`
 
-Move to another scene. Omit `chapterId` to move within the current chapter.
+Move to another scene. `chapterId` is optional, and is only needed when moving to another chapter.
 
 ```json
 {
