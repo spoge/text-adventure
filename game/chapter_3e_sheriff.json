@@ -1,0 +1,319 @@
+{
+  "name": "Chapter 3e Sheriff",
+  "scenes": [
+    {
+      "id": "village_sheriff_1",
+      "name": "Village - Sheriff",
+      "paragraphs": [
+        "Smoke fills your nostrils as you walk inside. A man in his 40s or 50s sits with his feet on a desk. The prominent star on his breast pocket sparkles.",
+        "\"Now, what can I do for you?\"",
+        {
+          "text": "> You gave the package to the sheriff and ratted out the shopkeeper. He invited you to the mayor's manor for dinner, with the promise of a later reward there.",
+          "showAny": [
+            "village_sheriff_invited"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "text": "Give him the package and explain everything",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_invited"
+            },
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_gave_package"
+            },
+            {
+              "type": "remove_flag",
+              "target": "village_dock_opened"
+            },
+            {
+              "type": "movement",
+              "target": "village_sheriff_2a_give_and_explain"
+            }
+          ],
+          "hideAny": [
+            "village_sheriff_gave_package"
+          ]
+        },
+        {
+          "text": "Give him the package and explain nothing",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_gave_package"
+            },
+            {
+              "type": "remove_flag",
+              "target": "village_dock_opened"
+            },
+            {
+              "type": "movement",
+              "target": "village_sheriff_2_give_not_explain"
+            }
+          ],
+          "hideAny": [
+            "village_sheriff_gave_package"
+          ]
+        },
+        {
+          "text": "Go back",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_square",
+              "chapterId": "chapter_3a_village"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "village_sheriff_2a_give_and_explain",
+      "name": "Village - Sheriff",
+      "paragraphs": [
+        "\"Oh, mighty kind of you, sir... Or madam?\" He pauses. \"Anyway, now this mystery can finally be solved. Unfortunately I don't have a reward right now. But on behalf of the town mayor you're invited to dine at the mayor's manor later today. I'll make sure a fitting reward awaits you there.\" "
+      ],
+      "actions": [
+        {
+          "text": "Accept invitation",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_sheriff_1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "village_sheriff_2_give_not_explain",
+      "name": "Village - Sheriff",
+      "paragraphs": [
+        "\"Fella, I appreciate you giving me this package. But I need to know where you got this. If you don't, I will be forced to arrest you on the grounds of you carrying illicit goods.\""
+      ],
+      "actions": [
+        {
+          "text": "Relent and explain",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_gave_package"
+            },
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_invited"
+            },
+            {
+              "type": "movement",
+              "target": "village_sheriff_2_give_then_explain"
+            }
+          ]
+        },
+        {
+          "text": "Refuse to explain",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_arrested"
+            },
+            {
+              "type": "movement",
+              "target": "village_sheriff_3_arrested"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "village_sheriff_2_give_then_explain",
+      "name": "Village - Sheriff",
+      "paragraphs": [
+        "\"Very wise of you.\" He pats you on the back. \"I understand you hesitatin', so I won't hold it against you. A dinner is being held at the major's manor later today. Consider yourself invited.\""
+      ],
+      "actions": [
+        {
+          "text": "Accept invitation",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_sheriff_1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "village_sheriff_3_arrested",
+      "name": "Village - Sheriff - Under arrest!",
+      "paragraphs": [
+        "\"Ah shoot. I had high hopes for you\"",
+        "The sheriff stands up. He is very tall and muscular. You realize he will probably whip you if he catches you. He lunges towards you.",
+        {
+          "text": "> You dodge left. But he is too fast and catches you easily.",
+          "showAny": [
+            "village_sheriff_dodge_left"
+          ]
+        },
+        {
+          "text": "> You dodge right. He expected left, but he is still on your tail. He takes a club and swings it towards you.",
+          "showAny": [
+            "village_sheriff_dodge_right"
+          ]
+        },
+        {
+          "text": "> You try to take a swing before he hits you, but he grabs your arm easily. The club is nearing your face very quickly.",
+          "showAny": [
+            "village_sheriff_take_swing"
+          ]
+        },
+        {
+          "text": "> You duck as he swings the club inches from your head. \"You little dirtbag...\" he growls.",
+          "showAny": [
+            "village_sheriff_ducked"
+          ]
+        },
+        {
+          "text": "> You try to tell him it's just a misunderstanding. He doesn't listen, and uses the pause to charge up another swing with the club. You realize he already holds your shoulder. You can't escape.",
+          "showAny": [
+            "village_sheriff_misunderstanding"
+          ]
+        },
+        {
+          "text": "> You close your eyes and pray to whatever god you believe in. Your head hits the ground very hard.",
+          "showAny": [
+            "village_sheriff_close_eyes"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "text": "Dodge left",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_dodge_left"
+            }
+          ],
+          "hideAny": [
+            "village_sheriff_dodge_left",
+            "village_sheriff_dodge_right",
+            "village_sheriff_close_eyes"
+          ]
+        },
+        {
+          "text": "Dodge right",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_dodge_right"
+            }
+          ],
+          "hideAny": [
+            "village_sheriff_dodge_left",
+            "village_sheriff_dodge_right",
+            "village_sheriff_close_eyes"
+          ]
+        },
+        {
+          "text": "Take a swing",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_take_swing"
+            }
+          ],
+          "showAny": [
+            "village_sheriff_dodge_right"
+          ],
+          "hideAny": [
+            "village_sheriff_close_eyes",
+            "village_sheriff_take_swing",
+            "village_sheriff_ducked",
+            "village_sheriff_misunderstanding"
+          ]
+        },
+        {
+          "text": "Duck",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_ducked"
+            }
+          ],
+          "showAny": [
+            "village_sheriff_dodge_right"
+          ],
+          "hideAny": [
+            "village_sheriff_close_eyes",
+            "village_sheriff_take_swing",
+            "village_sheriff_ducked"
+          ]
+        },
+        {
+          "text": "Take a swing",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_take_swing"
+            }
+          ],
+          "showAny": [
+            "village_sheriff_ducked"
+          ],
+          "hideAny": [
+            "village_sheriff_close_eyes",
+            "village_sheriff_take_swing",
+            "village_sheriff_misunderstanding"
+          ]
+        },
+        {
+          "text": "Say it is just a misunderstanding",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_misunderstanding"
+            }
+          ],
+          "showAny": [
+            "village_sheriff_dodge_left",
+            "village_sheriff_ducked"
+          ],
+          "hideAny": [
+            "village_sheriff_close_eyes",
+            "village_sheriff_take_swing",
+            "village_sheriff_misunderstanding"
+          ]
+        },
+        {
+          "text": "Close your eyes and pray",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_sheriff_close_eyes"
+            }
+          ],
+          "hideAny": [
+            "village_sheriff_close_eyes"
+          ]
+        },
+        {
+          "text": "You black out...",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "village_mayor_manor_dungeon",
+              "chapterId": "chapter_3a_village"
+            }
+          ],
+          "showAny": [
+            "village_sheriff_close_eyes"
+          ]
+        }
+      ]
+    }
+  ]
+}
