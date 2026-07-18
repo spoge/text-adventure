@@ -229,6 +229,10 @@
             {
               "type": "add_flag",
               "target": "village_sheriff_invited"
+            },
+            {
+              "type": "remove_flag",
+              "target": "village_dock_opened"
             }
           ],
           "hideAny": [
@@ -242,6 +246,10 @@
             {
               "type": "add_flag",
               "target": "village_sheriff_gave_package"
+            },
+            {
+              "type": "remove_flag",
+              "target": "village_dock_opened"
             }
           ],
           "hideAny": [
