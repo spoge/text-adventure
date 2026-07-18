@@ -2575,13 +2575,49 @@ const renderVisibilityFields = (container, obj) => {
   container.appendChild(grid);
 };
 
-const moveArrayItem = (array, index, direction) => {
+const swapStateKeys = (stateObject, keyA, keyB) => {
+  const valueA = stateObject[keyA];
+  const valueB = stateObject[keyB];
+  if (valueB === undefined) delete stateObject[keyA];
+  else stateObject[keyA] = valueB;
+  if (valueA === undefined) delete stateObject[keyB];
+  else stateObject[keyB] = valueA;
+};
+
+const swapMovedRowState = ({ scene, type, parentIndex }, index, nextIndex) => {
+  if (!scene || !type) return;
+  if (type === "trigger") {
+    swapStateKeys(
+      state.editorView.expandedRows,
+      rowKey(scene, "trigger", parentIndex, index),
+      rowKey(scene, "trigger", parentIndex, nextIndex)
+    );
+    return;
+  }
+
+  swapStateKeys(
+    state.editorView.expandedRows,
+    rowKey(scene, type, index),
+    rowKey(scene, type, nextIndex)
+  );
+
+  if (type === "action") {
+    swapStateKeys(
+      state.editorView.collapsedGroups,
+      groupKey(scene, `action:${index}:triggers`),
+      groupKey(scene, `action:${nextIndex}:triggers`)
+    );
+  }
+};
+
+const moveArrayItem = (array, index, direction, rowState = {}) => {
   const nextIndex = index + direction;
   if (nextIndex < 0 || nextIndex >= array.length) return;
   recordHistory();
   const item = array[index];
   array.splice(index, 1);
   array.splice(nextIndex, 0, item);
+  swapMovedRowState(rowState, index, nextIndex);
   markDirty();
   renderEditor();
   renderGraph();
@@ -2598,8 +2634,8 @@ const renderParagraph = (scene, paragraph, index) => {
       (event) => editorItemContextMenu(event, [
         { label: "Expand", onClick: () => setRowExpanded(scene, "paragraph", index, undefined, true) },
         { label: "Duplicate", onClick: () => duplicateParagraph(scene, index) },
-        { label: "Move Up", onClick: () => moveArrayItem(scene.paragraphs, index, -1), disabled: index === 0 },
-        { label: "Move Down", onClick: () => moveArrayItem(scene.paragraphs, index, 1), disabled: index === scene.paragraphs.length - 1 },
+        { label: "Move Up", onClick: () => moveArrayItem(scene.paragraphs, index, -1, { scene, type: "paragraph" }), disabled: index === 0 },
+        { label: "Move Down", onClick: () => moveArrayItem(scene.paragraphs, index, 1, { scene, type: "paragraph" }), disabled: index === scene.paragraphs.length - 1 },
         { label: "Remove", onClick: () => removeParagraph(scene, paragraph, index), danger: true },
       ])
     );
@@ -2613,8 +2649,8 @@ const renderParagraph = (scene, paragraph, index) => {
     (event) => editorItemContextMenu(event, [
       state.editorView.singleLine && { label: "Collapse", onClick: () => setRowExpanded(scene, "paragraph", index, undefined, false) },
       { label: "Duplicate", onClick: () => duplicateParagraph(scene, index) },
-      { label: "Move Up", onClick: () => moveArrayItem(scene.paragraphs, index, -1), disabled: index === 0 },
-      { label: "Move Down", onClick: () => moveArrayItem(scene.paragraphs, index, 1), disabled: index === scene.paragraphs.length - 1 },
+      { label: "Move Up", onClick: () => moveArrayItem(scene.paragraphs, index, -1, { scene, type: "paragraph" }), disabled: index === 0 },
+      { label: "Move Down", onClick: () => moveArrayItem(scene.paragraphs, index, 1, { scene, type: "paragraph" }), disabled: index === scene.paragraphs.length - 1 },
       { label: "Remove", onClick: () => removeParagraph(scene, paragraph, index), danger: true },
     ])
   ));
@@ -2665,8 +2701,8 @@ const renderParagraph = (scene, paragraph, index) => {
   actions.className = "card-actions";
   actions.append(
     button("Duplicate", () => duplicateParagraph(scene, index)),
-    button("Up", () => moveArrayItem(scene.paragraphs, index, -1)),
-    button("Down", () => moveArrayItem(scene.paragraphs, index, 1)),
+    button("Up", () => moveArrayItem(scene.paragraphs, index, -1, { scene, type: "paragraph" })),
+    button("Down", () => moveArrayItem(scene.paragraphs, index, 1, { scene, type: "paragraph" })),
     button("Remove", () => removeParagraph(scene, paragraph, index), "danger")
   );
   card.appendChild(actions);
@@ -2683,8 +2719,8 @@ const renderTrigger = (scene, action, actionIndex, trigger, index) => {
       (event) => editorItemContextMenu(event, [
         { label: "Expand", onClick: () => setRowExpanded(scene, "trigger", actionIndex, index, true) },
         !isMovementTrigger(trigger) && { label: "Duplicate", onClick: () => duplicateTrigger(scene, action, actionIndex, index) },
-        { label: "Move Up", onClick: () => moveArrayItem(action.triggers, index, -1), disabled: index === 0 },
-        { label: "Move Down", onClick: () => moveArrayItem(action.triggers, index, 1), disabled: index === (action.triggers || []).length - 1 },
+        { label: "Move Up", onClick: () => moveArrayItem(action.triggers, index, -1, { scene, type: "trigger", parentIndex: actionIndex }), disabled: index === 0 },
+        { label: "Move Down", onClick: () => moveArrayItem(action.triggers, index, 1, { scene, type: "trigger", parentIndex: actionIndex }), disabled: index === (action.triggers || []).length - 1 },
         { label: "Remove", onClick: () => removeTrigger(action, actionIndex, trigger, index), danger: true },
       ])
     );
@@ -2703,8 +2739,8 @@ const renderTrigger = (scene, action, actionIndex, trigger, index) => {
     (event) => editorItemContextMenu(event, [
       state.editorView.singleLine && { label: "Collapse", onClick: () => setRowExpanded(scene, "trigger", actionIndex, index, false) },
       !isMovementTrigger(trigger) && { label: "Duplicate", onClick: () => duplicateTrigger(scene, action, actionIndex, index) },
-      { label: "Move Up", onClick: () => moveArrayItem(action.triggers, index, -1), disabled: index === 0 },
-      { label: "Move Down", onClick: () => moveArrayItem(action.triggers, index, 1), disabled: index === (action.triggers || []).length - 1 },
+      { label: "Move Up", onClick: () => moveArrayItem(action.triggers, index, -1, { scene, type: "trigger", parentIndex: actionIndex }), disabled: index === 0 },
+      { label: "Move Down", onClick: () => moveArrayItem(action.triggers, index, 1, { scene, type: "trigger", parentIndex: actionIndex }), disabled: index === (action.triggers || []).length - 1 },
       { label: "Remove", onClick: () => removeTrigger(action, actionIndex, trigger, index), danger: true },
     ])
   ));
@@ -2803,8 +2839,8 @@ const renderTrigger = (scene, action, actionIndex, trigger, index) => {
     actions.appendChild(button("Duplicate", () => duplicateTrigger(scene, action, actionIndex, index)));
   }
   actions.append(
-    button("Up", () => moveArrayItem(action.triggers, index, -1)),
-    button("Down", () => moveArrayItem(action.triggers, index, 1)),
+    button("Up", () => moveArrayItem(action.triggers, index, -1, { scene, type: "trigger", parentIndex: actionIndex })),
+    button("Down", () => moveArrayItem(action.triggers, index, 1, { scene, type: "trigger", parentIndex: actionIndex })),
     button("Remove", () => removeTrigger(action, actionIndex, trigger, index), "danger")
   );
   card.appendChild(actions);
@@ -2821,8 +2857,8 @@ const renderAction = (scene, action, index) => {
         { label: "Expand", onClick: () => setRowExpanded(scene, "action", index, undefined, true) },
         { label: "Duplicate", onClick: () => duplicateAction(scene, index) },
         { label: "Add Trigger", onClick: () => addTrigger(scene, action, index) },
-        { label: "Move Up", onClick: () => moveArrayItem(scene.actions, index, -1), disabled: index === 0 },
-        { label: "Move Down", onClick: () => moveArrayItem(scene.actions, index, 1), disabled: index === scene.actions.length - 1 },
+        { label: "Move Up", onClick: () => moveArrayItem(scene.actions, index, -1, { scene, type: "action" }), disabled: index === 0 },
+        { label: "Move Down", onClick: () => moveArrayItem(scene.actions, index, 1, { scene, type: "action" }), disabled: index === scene.actions.length - 1 },
         { label: "Remove", onClick: () => removeAction(scene, action, index), danger: true },
       ])
     );
@@ -2837,8 +2873,8 @@ const renderAction = (scene, action, index) => {
       state.editorView.singleLine && { label: "Collapse", onClick: () => setRowExpanded(scene, "action", index, undefined, false) },
       { label: "Duplicate", onClick: () => duplicateAction(scene, index) },
       { label: "Add Trigger", onClick: () => addTrigger(scene, action, index) },
-      { label: "Move Up", onClick: () => moveArrayItem(scene.actions, index, -1), disabled: index === 0 },
-      { label: "Move Down", onClick: () => moveArrayItem(scene.actions, index, 1), disabled: index === scene.actions.length - 1 },
+      { label: "Move Up", onClick: () => moveArrayItem(scene.actions, index, -1, { scene, type: "action" }), disabled: index === 0 },
+      { label: "Move Down", onClick: () => moveArrayItem(scene.actions, index, 1, { scene, type: "action" }), disabled: index === scene.actions.length - 1 },
       { label: "Remove", onClick: () => removeAction(scene, action, index), danger: true },
     ])
   ));
@@ -2877,8 +2913,8 @@ const renderAction = (scene, action, index) => {
   actions.className = "card-actions";
   actions.append(
     button("Duplicate", () => duplicateAction(scene, index)),
-    button("Up", () => moveArrayItem(scene.actions, index, -1)),
-    button("Down", () => moveArrayItem(scene.actions, index, 1)),
+    button("Up", () => moveArrayItem(scene.actions, index, -1, { scene, type: "action" })),
+    button("Down", () => moveArrayItem(scene.actions, index, 1, { scene, type: "action" })),
     button("Remove", () => removeAction(scene, action, index), "danger")
   );
   card.appendChild(actions);

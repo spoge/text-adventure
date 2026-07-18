@@ -235,6 +235,7 @@ textarea {
 
 .graph-edge-label-layer {
   inset: 0;
+  overflow: hidden;
   pointer-events: none;
   position: absolute;
   z-index: 10;
@@ -249,6 +250,7 @@ textarea {
   font-size: 10px;
   line-height: 1.25;
   max-width: 120px;
+  min-width: 48px;
   padding: 4px 5px;
   pointer-events: auto;
   position: absolute;
@@ -256,8 +258,9 @@ textarea {
   touch-action: none;
   transform: translate(-50%, -50%);
   user-select: none;
+  width: max-content;
   white-space: normal;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .graph-edge-label:hover,

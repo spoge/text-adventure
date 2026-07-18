@@ -87,6 +87,25 @@ const runCommand = (command) => new Promise((resolve, reject) => {
   });
 });
 
+const openBrowser = (url) => {
+  if (process.env.EDITOR_OPEN === "false") return;
+
+  const command = process.platform === "win32"
+    ? "cmd"
+    : process.platform === "darwin"
+      ? "open"
+      : "xdg-open";
+  const args = process.platform === "win32"
+    ? ["/c", "start", "", url]
+    : [url];
+  const child = spawn(command, args, {
+    detached: true,
+    stdio: "ignore",
+  });
+  child.on("error", () => {});
+  child.unref();
+};
+
 const commitSummaryFromNumstat = (numstat) => {
   const rows = numstat.split(/\r?\n/).filter(Boolean);
   let added = 0;
@@ -940,5 +959,7 @@ app.use((error, _req, res, _next) => {
 });
 
 app.listen(port, () => {
-  console.log(`Chapter editor running at http://localhost:${port}`);
+  const url = `http://localhost:${port}`;
+  console.log(`Chapter editor running at ${url}`);
+  openBrowser(url);
 });
