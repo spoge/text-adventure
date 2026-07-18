@@ -8,13 +8,13 @@
         "\"Oi... What'cha lookin' at?\"",
         "His arms are crossed. Very muscley, very hairy, very tattooy.",
         {
-          "text": "> You offer him the package. He looks strangely at you. \"I ain't expectin' no package.\"",
+          "text": "> You offer him the package. He looks strangely at you. \"I ain't expectin' no package.\" He turns and points to the edge of one of the warehouses. \"Talk to the skinny fella back there. I reckon' he knows what you need.\" ",
           "showAny": [
             "village_docks_talked_to_scary_man"
           ]
         },
         {
-          "text": "\"Talk to the skinny fella back there. I reckon' he knows what you need.\" ",
+          "text": "",
           "showAny": [
             "village_docks_talked_to_scary_man"
           ]
@@ -34,7 +34,7 @@
           ]
         },
         {
-          "text": "Go to the skinny fella",
+          "text": "Approach the skinny fella",
           "triggers": [
             {
               "type": "movement",
@@ -60,11 +60,11 @@
       "id": "docks_1",
       "name": "Village - Docks",
       "paragraphs": [
-        "The grand docks of the Village. It fits two ships. Two very small fishing ships. Like row boat small."
+        "The grand docks of the Village. It fits two ships. Two very small fishing ships. Like row boat small. Very fishy smell as well."
       ],
       "actions": [
         {
-          "text": "Talk to the scary looking man",
+          "text": "Approach the scary looking man",
           "triggers": [
             {
               "type": "movement",
@@ -73,12 +73,15 @@
           ]
         },
         {
-          "text": "Go to the skinny fella",
+          "text": "Approach the skinny fella",
           "triggers": [
             {
               "type": "movement",
               "target": "docks_3"
             }
+          ],
+          "showAny": [
+            "village_docks_talked_to_scary_man"
           ]
         },
         {
@@ -97,9 +100,27 @@
       "id": "docks_3",
       "name": "Village Docks - Skinny fella",
       "paragraphs": [
-        "A skinny fella skulks around the corner. A rat like creature. Yeah is creepy alright."
+        "A skinny fella skulks around the corner. A rat like creature. Yeah is creepy alright.",
+        {
+          "text": "> You try to gave him the package, but this option isn't implemented yet, so nothing happens. Try the sheriff instead.",
+          "showAny": [
+            "village_docks_gave_package"
+          ]
+        }
       ],
       "actions": [
+        {
+          "text": "Offer package",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_docks_gave_package"
+            }
+          ],
+          "hideAny": [
+            "village_docks_gave_package"
+          ]
+        },
         {
           "text": "Go back",
           "triggers": [
