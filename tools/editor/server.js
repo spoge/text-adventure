@@ -9,6 +9,7 @@ const repoRoot = path.resolve(__dirname, "../..");
 const gameDir = path.join(repoRoot, "public", "game");
 const staticDir = path.join(__dirname, "public");
 let deployInProgress = false;
+let commitInProgress = false;
 
 app.use(express.json({ limit: "5mb" }));
 app.use(express.static(staticDir));
@@ -61,6 +62,45 @@ const defaultChapterName = (chapterId) =>
     .filter(Boolean)
     .map((part) => `${part[0]?.toUpperCase() || ""}${part.slice(1)}`)
     .join(" ") || "New Chapter";
+
+const runCommand = (command) => new Promise((resolve, reject) => {
+  const child = spawn(command, {
+    cwd: repoRoot,
+    shell: true,
+  });
+  const chunks = [];
+  const appendOutput = (chunk) => chunks.push(chunk.toString());
+
+  child.stdout.on("data", appendOutput);
+  child.stderr.on("data", appendOutput);
+  child.on("error", reject);
+  child.on("close", (code) => {
+    const output = chunks.join("").trim();
+    if (code === 0) {
+      resolve(output);
+      return;
+    }
+
+    const error = new Error(output || `${command} failed with exit code ${code}`);
+    error.status = 500;
+    reject(error);
+  });
+});
+
+const commitSummaryFromNumstat = (numstat) => {
+  const rows = numstat.split(/\r?\n/).filter(Boolean);
+  let added = 0;
+  let removed = 0;
+
+  rows.forEach((row) => {
+    const [addedLines, removedLines] = row.split(/\s+/);
+    if (/^\d+$/.test(addedLines)) added += Number(addedLines);
+    if (/^\d+$/.test(removedLines)) removed += Number(removedLines);
+  });
+
+  const fileWord = rows.length === 1 ? "file" : "files";
+  return `Updated ${rows.length} ${fileWord} (${added}+, ${removed}- lines) through editor`;
+};
 
 const chapterPath = (chapterId) => {
   const idError = chapterIdError(chapterId, { allowStart: true });
@@ -843,6 +883,39 @@ app.get("/api/validation", async (_req, res, next) => {
   }
 });
 
+app.post("/api/commit-and-push", async (_req, res, next) => {
+  if (commitInProgress) {
+    res.status(409).json({ error: "Commit already in progress" });
+    return;
+  }
+
+  commitInProgress = true;
+  try {
+    await runCommand("git add public");
+    const numstat = await runCommand("git diff --cached --numstat");
+
+    if (!numstat.trim()) {
+      res.json({ ok: true, skipped: true, message: "No changes to commit" });
+      return;
+    }
+
+    const message = commitSummaryFromNumstat(numstat);
+    const escapedMessage = message.replace(/"/g, '\\"');
+    const commitOutput = await runCommand(`git commit -m "${escapedMessage}"`);
+    const pushOutput = await runCommand("git push");
+
+    res.json({
+      ok: true,
+      message,
+      output: [commitOutput, pushOutput].filter(Boolean).join("\n\n"),
+    });
+  } catch (error) {
+    next(error);
+  } finally {
+    commitInProgress = false;
+  }
+});
+
 app.post("/api/deploy", async (_req, res, next) => {
   if (deployInProgress) {
     res.status(409).json({ error: "Deploy already in progress" });
@@ -851,29 +924,7 @@ app.post("/api/deploy", async (_req, res, next) => {
 
   deployInProgress = true;
   try {
-    const output = await new Promise((resolve, reject) => {
-      const child = spawn("npm run deploy", {
-        cwd: repoRoot,
-        shell: true,
-      });
-      const chunks = [];
-      const appendOutput = (chunk) => chunks.push(chunk.toString());
-
-      child.stdout.on("data", appendOutput);
-      child.stderr.on("data", appendOutput);
-      child.on("error", reject);
-      child.on("close", (code) => {
-        const combinedOutput = chunks.join("").trim();
-        if (code === 0) {
-          resolve(combinedOutput);
-          return;
-        }
-
-        const error = new Error(combinedOutput || `Deploy failed with exit code ${code}`);
-        error.status = 500;
-        reject(error);
-      });
-    });
+    const output = await runCommand("npm run deploy");
 
     res.json({ ok: true, output });
   } catch (error) {

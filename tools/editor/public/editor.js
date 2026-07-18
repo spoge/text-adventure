@@ -56,6 +56,7 @@ const state = {
   autocompleteInput: null,
   pendingScrollRowKey: "",
   deploying: false,
+  committing: false,
   editorView: {
     singleLine: true,
     singleLineFullText: true,
@@ -3356,6 +3357,25 @@ const deployGame = async () => {
   }
 };
 
+const commitAndPushChanges = async () => {
+  if (state.committing) return;
+  if (state.dirty && !confirm("You have unsaved changes. Commit the saved files on disk anyway?")) return;
+  if (!confirm("Commit all changes and push to git now?")) return;
+
+  state.committing = true;
+  try {
+    setStatus("Committing changes...");
+    const result = await api("/api/commit-and-push", { method: "POST" });
+    setStatus(result.message || "Commit and push complete", "saved");
+    if (result.output) console.log(result.output);
+  } catch (error) {
+    setStatus(error.message, "error");
+    alert(error.message);
+  } finally {
+    state.committing = false;
+  }
+};
+
 const setGraphLayout = (mode) => {
   state.graphLayoutMode = mode;
   saveGraphPreferences();
@@ -3417,6 +3437,7 @@ const toolbarMenus = [
     button: fileMenuButton,
     items: () => [
       { label: "Save", onClick: saveChapter, disabled: !state.chapter || !state.chapterId },
+      { label: "Commit & Push", onClick: commitAndPushChanges, disabled: state.committing },
       { label: "Deploy", onClick: deployGame, disabled: state.deploying },
     ],
   },
