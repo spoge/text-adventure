@@ -635,6 +635,31 @@ const restoreNodePositions = (positions) => {
   });
 };
 
+const placeNewNodePositions = (positions) => {
+  if (!state.graph) return;
+  const newNodes = [];
+  let maxX = -Infinity;
+  let minY = Infinity;
+
+  state.graph.nodes().forEach((node) => {
+    const position = positions[node.id()];
+    if (!position) {
+      newNodes.push(node);
+      return;
+    }
+    maxX = Math.max(maxX, position.x);
+    minY = Math.min(minY, position.y);
+  });
+
+  if (newNodes.length === 0) return;
+
+  const startX = Number.isFinite(maxX) ? maxX + graphNodeWidth + 120 : 0;
+  const startY = Number.isFinite(minY) ? minY : 0;
+  newNodes.forEach((node, index) => {
+    node.position({ x: startX, y: startY + index * 100 });
+  });
+};
+
 const graphLayoutKey = () =>
   state.chapterId ? `${state.chapterId}|${state.graphCrossChapterMode}` : "";
 
@@ -1383,8 +1408,10 @@ const renderGraph = ({ relayout = false } = {}) => {
   );
   const elements = applySavedPositionsToElements(graphElements(), savedLayout);
   let ranLayout = false;
+  let newNodePositionSource = null;
   if (!state.graph) {
     ranLayout = !savedLayout;
+    if (savedLayout) newNodePositionSource = savedLayout.positions;
     state.graph = cytoscape({
       container: document.getElementById("graph"),
       elements,
@@ -1558,10 +1585,14 @@ const renderGraph = ({ relayout = false } = {}) => {
       ranLayout = true;
       state.graph.layout(graphLayoutOptions()).run();
     }
-    else applySavedGraphLayout(savedLayout);
+    else {
+      applySavedGraphLayout(savedLayout);
+      newNodePositionSource = positions;
+    }
   }
 
   if (savedLayout) applySavedGraphLayout(savedLayout);
+  if (newNodePositionSource && !ranLayout) placeNewNodePositions(newNodePositionSource);
   renderGraphEdgeLabels();
   resizeGraph();
   clampGraphPan();
@@ -1574,9 +1605,6 @@ const renderGraph = ({ relayout = false } = {}) => {
   }
 };
 
-const sceneSignature = () =>
-  state.chapter?.scenes?.map((scene) => scene.id).join("|") || "";
-
 const ensureSelectedScene = () => {
   if (sceneById(state.selectedSceneId)) return;
   state.selectedSceneId = state.chapter?.scenes?.[0]?.id || "";
@@ -1584,7 +1612,6 @@ const ensureSelectedScene = () => {
 
 const restoreChapterSnapshot = (snapshot, redoTarget) => {
   if (!snapshot) return;
-  const previousSceneSignature = sceneSignature();
   redoTarget.push(chapterSnapshot());
   if (redoTarget.length > historyLimit) redoTarget.shift();
   state.chapter = JSON.parse(snapshot);
@@ -1592,7 +1619,7 @@ const restoreChapterSnapshot = (snapshot, redoTarget) => {
   ensureSelectedScene();
   clearExpandedRows();
   renderEditor();
-  renderGraph({ relayout: previousSceneSignature !== sceneSignature() });
+  renderGraph();
   updateDirtyStatus();
   updateHistoryButtons();
 };
@@ -2432,7 +2459,7 @@ const pasteScene = () => {
   state.selectedSceneId = scene.id;
   markDirty();
   renderEditor();
-  renderGraph({ relayout: true });
+  renderGraph();
 };
 
 const addScene = () => {
@@ -2448,7 +2475,7 @@ const addScene = () => {
   state.selectedSceneId = scene.id;
   markDirty();
   renderEditor();
-  renderGraph({ relayout: true });
+  renderGraph();
 };
 
 const deleteScene = async (scene) => {
@@ -2469,7 +2496,7 @@ const deleteScene = async (scene) => {
     state.selectedSceneId = state.chapter.scenes[0]?.id || "";
     markDirty();
     renderEditor();
-    renderGraph({ relayout: true });
+    renderGraph();
   } catch (error) {
     setStatus(error.message, "error");
     alert(error.message);
