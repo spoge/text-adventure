@@ -128,7 +128,7 @@
         "The first thing that strikes you is the noise. Fishermen know how to keep it lively.",
         "The tavern smells of good food and drinks - thankfully not too fishy.",
         {
-          "text": "> You ask the barkeep about any quests. He recommend checking out the backside of the quest board for the... unusual quests.",
+          "text": "> You ask the barkeep about any quests. He recommend checking out the backside of the quest board for any... unusual quests.",
           "showAny": [
             "opened_village_quest_board_backside"
           ]
