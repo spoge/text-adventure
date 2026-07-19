@@ -1,5 +1,5 @@
 {
-  "name": "Chapter 3d Docks",
+  "name": "Docks",
   "scenes": [
     {
       "id": "docks_2",
@@ -60,7 +60,8 @@
       "id": "docks_1",
       "name": "Village - Docks",
       "paragraphs": [
-        "The grand docks of the Village. It fits two ships. Two very small fishing ships. Like row boat small. Very fishy smell as well."
+        "The grand docks of the Village. It fits two ships. Two very small fishing ships. Like row boat small. Very fishy smell as well.",
+        "You see a couple of men by the docks. One large and one smaller."
       ],
       "actions": [
         {
@@ -79,9 +80,6 @@
               "type": "movement",
               "target": "docks_3"
             }
-          ],
-          "showAny": [
-            "village_docks_talked_to_scary_man"
           ]
         },
         {
@@ -102,9 +100,17 @@
       "paragraphs": [
         "A skinny fella skulks around the corner. A rat like creature. Yeah is creepy alright.",
         {
-          "text": "> You try to gave him the package, but this option isn't implemented yet, so nothing happens. Try the sheriff instead.",
+          "text": "> You try to gave him the package. He reaches his hands forward, but stops midway. \"Wait, you did you say this was from?\"",
           "showAny": [
-            "village_docks_gave_package"
+            "village_docks_tried_to_gave_package"
+          ]
+        },
+        {
+          "text": "> As you give your answer. The rat-like man's stare bore into you. \"Are you sure about that?\" ",
+          "showAny": [
+            "village_docks_gave_very_wrong_answer",
+            "village_docks_gave_wrong_answer",
+            "village_docks_gave_correct_answer"
           ]
         }
       ],
@@ -114,11 +120,131 @@
           "triggers": [
             {
               "type": "add_flag",
-              "target": "village_docks_gave_package"
+              "target": "village_docks_tried_to_gave_package"
             }
           ],
           "hideAny": [
-            "village_docks_gave_package"
+            "village_docks_tried_to_gave_package"
+          ]
+        },
+        {
+          "text": "Albert the 9th of the Marquess' 4th son",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_docks_gave_wrong_answer"
+            }
+          ],
+          "showAny": [
+            "village_docks_tried_to_gave_package"
+          ],
+          "hideAny": [
+            "village_docks_gave_very_wrong_answer",
+            "village_docks_gave_wrong_answer",
+            "village_docks_gave_correct_answer"
+          ]
+        },
+        {
+          "text": "Albert the 9th of the Vicount's 4th son",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_docks_gave_wrong_answer"
+            }
+          ],
+          "showAny": [
+            "village_docks_tried_to_gave_package"
+          ],
+          "hideAny": [
+            "village_docks_gave_very_wrong_answer",
+            "village_docks_gave_wrong_answer",
+            "village_docks_gave_correct_answer"
+          ]
+        },
+        {
+          "text": "Albert the 4th of the Vicount's 9th son",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_docks_gave_correct_answer"
+            }
+          ],
+          "showAny": [
+            "village_docks_tried_to_gave_package"
+          ],
+          "hideAny": [
+            "village_docks_gave_very_wrong_answer",
+            "village_docks_gave_wrong_answer",
+            "village_docks_gave_correct_answer"
+          ]
+        },
+        {
+          "text": "Albrecht the 4th of the Vicount's 9th son",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_docks_gave_wrong_answer"
+            }
+          ],
+          "showAny": [
+            "village_docks_tried_to_gave_package"
+          ],
+          "hideAny": [
+            "village_docks_gave_very_wrong_answer",
+            "village_docks_gave_wrong_answer",
+            "village_docks_gave_correct_answer"
+          ]
+        },
+        {
+          "text": "Albert the 9th of the Count's 4th son",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_docks_gave_wrong_answer"
+            }
+          ],
+          "showAny": [
+            "village_docks_tried_to_gave_package"
+          ],
+          "hideAny": [
+            "village_docks_gave_very_wrong_answer",
+            "village_docks_gave_wrong_answer",
+            "village_docks_gave_correct_answer"
+          ]
+        },
+        {
+          "text": "Alberto from the blah-blah-blah",
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_docks_gave_very_wrong_answer"
+            }
+          ],
+          "showAny": [
+            "village_docks_tried_to_gave_package"
+          ],
+          "hideAny": [
+            "village_docks_gave_very_wrong_answer",
+            "village_docks_gave_wrong_answer",
+            "village_docks_gave_correct_answer"
+          ]
+        },
+        {
+          "text": "Yes",
+          "triggers": [],
+          "showAny": [
+            "village_docks_gave_very_wrong_answer",
+            "village_docks_gave_wrong_answer",
+            "village_docks_gave_correct_answer"
+          ]
+        },
+        {
+          "text": "No",
+          "triggers": [],
+          "showAny": [
+            "village_docks_gave_very_wrong_answer",
+            "village_docks_gave_wrong_answer",
+            "village_docks_gave_correct_answer"
           ]
         },
         {

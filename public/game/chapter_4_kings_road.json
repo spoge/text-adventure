@@ -1,0 +1,17 @@
+{
+  "name": "Kings Road",
+  "scenes": [
+    {
+      "id": "kings_road_1",
+      "name": "The King's Road",
+      "paragraphs": [
+        "After everything that happened in the village, you take a brave step forward. A step on the King's Road that goes from coast to coast. What new adventures will await you there?",
+        "---",
+        "Thanks for playing so far. More to come later.",
+        "---",
+        "Add /reset to the address in the browser to start the adventure anew. "
+      ],
+      "actions": []
+    }
+  ]
+}
