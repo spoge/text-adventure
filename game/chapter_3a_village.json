@@ -113,11 +113,17 @@
           ]
         },
         {
-          "text": "Go to Orchards by the High Roads",
+          "text": "Go to the King's Road",
           "showAny": [
-            "opened_village_orchard"
+            "opened_village_kings_road"
           ],
-          "triggers": []
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "kings_road_1",
+              "chapterId": "chapter_4_kings_road"
+            }
+          ]
         }
       ]
     },
