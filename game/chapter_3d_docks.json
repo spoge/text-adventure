@@ -106,11 +106,17 @@
           ]
         },
         {
-          "text": "> As you give your answer. The rat-like man's stare bore into you. \"Are you sure about that?\" ",
+          "text": "> As you give your answer, the rat-like man's stare bore into you. \"Are you sure about that?\" ",
           "showAny": [
             "village_docks_gave_very_wrong_answer",
             "village_docks_gave_wrong_answer",
             "village_docks_gave_correct_answer"
+          ]
+        },
+        {
+          "text": "> You confirm your answer. The rat-like man nods slowly. \"We don't do transactions out here in the open. Follow me.\" He starts walking to the nearby alleyway.",
+          "showAny": [
+            "village_docks_confirmed_answer"
           ]
         }
       ],
@@ -213,7 +219,7 @@
           ]
         },
         {
-          "text": "Alberto from the blah-blah-blah",
+          "text": "Alberto from the *mumble something incoherent*",
           "triggers": [
             {
               "type": "add_flag",
@@ -231,19 +237,72 @@
         },
         {
           "text": "Yes",
-          "triggers": [],
+          "triggers": [
+            {
+              "type": "add_flag",
+              "target": "village_docks_confirmed_answer"
+            }
+          ],
           "showAny": [
             "village_docks_gave_very_wrong_answer",
             "village_docks_gave_wrong_answer",
             "village_docks_gave_correct_answer"
+          ],
+          "hideAny": [
+            "village_docks_confirmed_answer"
           ]
         },
         {
           "text": "No",
-          "triggers": [],
+          "triggers": [
+            {
+              "type": "remove_flag",
+              "target": "village_docks_gave_very_wrong_answer"
+            },
+            {
+              "type": "remove_flag",
+              "target": "village_docks_gave_wrong_answer"
+            },
+            {
+              "type": "remove_flag",
+              "target": "village_docks_gave_correct_answer"
+            }
+          ],
           "showAny": [
             "village_docks_gave_very_wrong_answer",
             "village_docks_gave_wrong_answer",
+            "village_docks_gave_correct_answer"
+          ],
+          "hideAny": [
+            "village_docks_confirmed_answer"
+          ]
+        },
+        {
+          "text": "Follow the rat-like man",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "scene_5_ambush"
+            }
+          ],
+          "showAll": [
+            "village_docks_confirmed_answer"
+          ],
+          "showAny": [
+            "village_docks_gave_wrong_answer",
+            "village_docks_gave_very_wrong_answer"
+          ]
+        },
+        {
+          "text": "Follow the rat-like man",
+          "triggers": [
+            {
+              "type": "movement",
+              "target": "scene_5_transaction"
+            }
+          ],
+          "showAll": [
+            "village_docks_confirmed_answer",
             "village_docks_gave_correct_answer"
           ]
         },
@@ -254,9 +313,28 @@
               "type": "movement",
               "target": "docks_1"
             }
+          ],
+          "hideAny": [
+            "village_docks_tried_to_gave_package"
           ]
         }
       ]
+    },
+    {
+      "id": "scene_5_ambush",
+      "name": "Docks - Ambush!",
+      "paragraphs": [
+        "As you enter the alleyway, the large scary man blocks your exit. \n\nThe skinny fella turns around and looks at you. \n\n\"You thought you could trick me, did you?\""
+      ],
+      "actions": []
+    },
+    {
+      "id": "scene_5_transaction",
+      "name": "Docks - Transaction",
+      "paragraphs": [
+        "As you enter the alleyway, the large scary man blocks your exit. \n\nThe skinny fella turns around and looks at you. \n\n\"I don't know you, but you got the code right. Who are you?\""
+      ],
+      "actions": []
     }
   ]
 }
